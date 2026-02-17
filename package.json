@@ -1,0 +1,26 @@
+{
+  "name": "daily-business-intelligence",
+  "version": "1.0.0",
+  "description": "Automated daily business reporting for Noody Skincare & The Facialist",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "schedule": "node index.js --schedule",
+    "noody": "node index.js --business noody",
+    "facialist": "node index.js --business facialist",
+    "test": "node index.js --business noody"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.0",
+    "@google-analytics/data": "^4.0.0",
+    "@slack/web-api": "^7.0.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.4.0",
+    "google-ads-api": "^15.0.0",
+    "node-cron": "^3.0.0",
+    "@sendgrid/mail": "^8.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
