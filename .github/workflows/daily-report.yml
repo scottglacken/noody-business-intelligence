@@ -33,7 +33,7 @@ jobs:
         run: npm install
 
       - name: Create Google credentials file
-     run: |
+        run: |
        mkdir -p credentials
        echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > credentials/google-sa.json
 
