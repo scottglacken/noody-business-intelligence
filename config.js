@@ -4,6 +4,11 @@
 // Copy this file to config.local.js and fill in your real values
 // Never commit config.local.js to version control
 
+console.log('[DEBUG] Environment check:', {
+  SHOPIFY_NOODY_CLIENT_ID: process.env.SHOPIFY_NOODY_CLIENT_ID ? 'SET' : 'NOT SET',
+  SHOPIFY_NOODY_CLIENT_SECRET: process.env.SHOPIFY_NOODY_CLIENT_SECRET ? 'SET' : 'NOT SET'
+});
+
 module.exports = {
 
   // ── BUSINESS SETTINGS ─────────────────────────────────────
