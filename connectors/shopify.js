@@ -37,30 +37,39 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
   const base = `https://${storeName}.myshopify.com/admin/api/2024-01`;
   const headers = { "X-Shopify-Access-Token": accessToken };
 
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(0, 0, 0, 0);
+  // CRITICAL: Use NZ timezone, not server timezone
+  // Server runs in UTC, but we need NZ business day alignment
+  const nzTimeString = new Date().toLocaleString("en-US", { timeZone: "Pacific/Auckland" });
+  const todayNZ = new Date(nzTimeString);
+  
+  const yesterdayNZ = new Date(todayNZ);
+  yesterdayNZ.setDate(yesterdayNZ.getDate() - 1);
+  yesterdayNZ.setHours(0, 0, 0, 0);
+  
+  const endOfYesterdayNZ = new Date(yesterdayNZ);
+  endOfYesterdayNZ.setHours(23, 59, 59, 999);
 
-  const dayBefore = new Date(yesterday);
-  dayBefore.setDate(dayBefore.getDate() - 1);
+  const dayBeforeNZ = new Date(yesterdayNZ);
+  dayBeforeNZ.setDate(dayBeforeNZ.getDate() - 1);
 
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoNZ = new Date(todayNZ);
+  weekAgoNZ.setDate(weekAgoNZ.getDate() - 7);
 
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthStartNZ = new Date(todayNZ.getFullYear(), todayNZ.getMonth(), 1);
 
   const fmt = (d) => d.toISOString();
 
+  console.log(`[Shopify/${businessName}] Querying for NZ date: ${yesterdayNZ.toDateString()}`);
+
   try {
-    // ── Yesterday's Orders ──────────────────────────────────
+    // ── Yesterday's Orders (NZ timezone) ──────────────────────────────────
     const [ordersRes, refundsRes, mtdRes, wow7Res] = await Promise.all([
       axios.get(`${base}/orders.json`, {
         headers,
         params: {
           status: "any",
-          created_at_min: fmt(yesterday),
-          created_at_max: fmt(today),
+          created_at_min: fmt(yesterdayNZ),
+          created_at_max: fmt(endOfYesterdayNZ),
           limit: 250,
           fields: "id,total_price,subtotal_price,financial_status,line_items,customer,source_name,created_at,tags"
         }
@@ -70,8 +79,8 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
         params: {
           status: "any",
           financial_status: "refunded,partially_refunded",
-          created_at_min: fmt(yesterday),
-          created_at_max: fmt(today),
+          created_at_min: fmt(yesterdayNZ),
+          created_at_max: fmt(endOfYesterdayNZ),
           limit: 250,
           fields: "id,total_price,refunds"
         }
@@ -80,8 +89,8 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
         headers,
         params: {
           status: "any",
-          created_at_min: fmt(monthStart),
-          created_at_max: fmt(today),
+          created_at_min: fmt(monthStartNZ),
+          created_at_max: fmt(todayNZ),
           limit: 250,
           fields: "id,total_price,financial_status,created_at"
         }
@@ -90,8 +99,8 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
         headers,
         params: {
           status: "any",
-          created_at_min: fmt(weekAgo),
-          created_at_max: fmt(today),
+          created_at_min: fmt(weekAgoNZ),
+          created_at_max: fmt(todayNZ),
           limit: 250,
           fields: "id,total_price,created_at,customer"
         }
@@ -151,13 +160,13 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
 
     // ── Week-over-week comparison (last 7 days vs prior 7) ──
     const last7Rev = weekOrders
-      .filter(o => new Date(o.created_at) >= weekAgo)
+      .filter(o => new Date(o.created_at) >= weekAgoNZ)
       .reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
 
     return {
       business: businessName,
       source: "shopify",
-      date: yesterday.toDateString(),
+      date: yesterdayNZ.toDateString(),
       daily: {
         orders: paidOrders.length,
         revenue: Math.round(revenue * 100) / 100,
@@ -172,7 +181,7 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
         orders: paidMtdOrders.length,
         revenue: Math.round(mtdRevenue * 100) / 100,
         aov: Math.round(mtdAov * 100) / 100,
-        daysElapsed: today.getDate() - 1,
+        daysElapsed: todayNZ.getDate() - 1,
       },
       weekly: {
         orders: weekOrders.length,
