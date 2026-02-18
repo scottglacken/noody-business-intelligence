@@ -1,9 +1,39 @@
 // connectors/shopify.js
 // Pulls yesterday's orders, revenue, refunds, top products
+// Updated for 2026: Uses OAuth client credentials grant flow
 
 const axios = require("axios");
 
-async function getShopifyData(storeName, accessToken, businessName) {
+// Get access token using client credentials (new 2026 method)
+async function getAccessToken(storeName, clientId, clientSecret) {
+  try {
+    const response = await axios.post(
+      `https://${storeName}.myshopify.com/admin/oauth/access_token`,
+      `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&grant_type=client_credentials`,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+    return response.data.access_token;
+  } catch (err) {
+    console.error(`[Shopify/${storeName}] Token exchange failed:`, err.response?.data || err.message);
+    throw err;
+  }
+}
+
+async function getShopifyData(storeName, clientIdOrToken, clientSecret, businessName) {
+  // Support both old (direct token) and new (client credentials) methods
+  let accessToken;
+  if (clientSecret) {
+    // New method: exchange client credentials for access token
+    accessToken = await getAccessToken(storeName, clientIdOrToken, clientSecret);
+  } else {
+    // Old method: direct access token (for backward compatibility)
+    accessToken = clientIdOrToken;
+  }
+
   const base = `https://${storeName}.myshopify.com/admin/api/2024-01`;
   const headers = { "X-Shopify-Access-Token": accessToken };
 
