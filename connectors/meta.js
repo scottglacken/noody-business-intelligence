@@ -6,7 +6,9 @@ const axios = require("axios");
 async function getMetaData(accessToken, adAccountId, businessName) {
   const base = "https://graph.facebook.com/v19.0";
 
-  const today = new Date();
+  // Get current date in NZ timezone (Pacific/Auckland)
+  const nzTime = new Date().toLocaleString("en-US", { timeZone: "Pacific/Auckland" });
+  const today = new Date(nzTime);
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
