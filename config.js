@@ -37,11 +37,17 @@ module.exports = {
   // ── SHOPIFY ──────────────────────────────────────────────
   shopify: {
     noody: {
-      storeName: process.env.SHOPIFY_NOODY_STORE,        // e.g. "noody-skincare"
+      storeName: process.env.SHOPIFY_NOODY_STORE,
+      // New 2026 method: Client ID + Secret (from Dev Dashboard)
+      clientId: process.env.SHOPIFY_NOODY_CLIENT_ID,
+      clientSecret: process.env.SHOPIFY_NOODY_CLIENT_SECRET,
+      // Old method (deprecated Jan 2026): Direct access token
       accessToken: process.env.SHOPIFY_NOODY_TOKEN,
     },
     facialist: {
       storeName: process.env.SHOPIFY_FACIALIST_STORE,
+      clientId: process.env.SHOPIFY_FACIALIST_CLIENT_ID,
+      clientSecret: process.env.SHOPIFY_FACIALIST_CLIENT_SECRET,
       accessToken: process.env.SHOPIFY_FACIALIST_TOKEN,
     }
   },
