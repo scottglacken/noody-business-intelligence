@@ -31,10 +31,6 @@ async function collectData(businessKey) {
   // Shopify
   if (config.shopify[businessKey]?.storeName) {
     const shopifyConfig = config.shopify[businessKey];
-    console.log(`[DEBUG] Shopify config for ${businessKey}:`, {      storeName: shopifyConfig.storeName,
-      hasClientId: !!shopifyConfig.clientId,
-      hasClientSecret: !!shopifyConfig.clientSecret
-    });
     // Support both new (client credentials) and old (direct token) methods
     if (shopifyConfig.clientId && shopifyConfig.clientSecret) {
       collectors.push(
@@ -247,7 +243,7 @@ if (args.includes("--schedule")) {
 } else if (args.includes("--business")) {
   // Run for specific business: node index.js --business noody
   const businessKey = args[args.indexOf("--business") + 1];
-  runBusinessReport(businessKey).then(process.exit);
+  runBusinessReport(businessKey).then(() => process.exit(0));
 } else {
   // Run once immediately
   runAllReports().then(() => {
