@@ -101,31 +101,43 @@ function buildSlackBlocks(analysis, data, businessName, date) {
   if (klaviyo && !klaviyo.error) {
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "*📧 Email Marketing*" },
+      text: { type: "mrkdwn", text: "*📧 Email Marketing (7-Day View)*" },
       fields: [
         { type: "mrkdwn", text: `*Campaigns (Yesterday)*\n${klaviyo.daily?.campaignsSent || 0}` },
-        { type: "mrkdwn", text: `*Campaigns (30d)*\n${klaviyo.last30Days?.totalCampaigns || 0}` },
-        { type: "mrkdwn", text: `*Active Flows*\n${klaviyo.flows?.active || 0} of ${klaviyo.flows?.total || 0}` },
-        { type: "mrkdwn", text: `*Avg Recipients/Campaign*\n${(klaviyo.last30Days?.avgRecipientsPerCampaign || 0).toLocaleString()}` },
-        { type: "mrkdwn", text: `*Email Lists*\n${klaviyo.lists?.totalLists || 0}` },
+        { type: "mrkdwn", text: `*Campaigns (7d)*\n${klaviyo.last7Days?.campaignsSent || 0}` },
+        { type: "mrkdwn", text: `*Active Flows*\n${klaviyo.flows?.active || 0}/${klaviyo.flows?.total || 0}` },
+        { type: "mrkdwn", text: `*Subscribers*\n${(klaviyo.lists?.totalSubscribers || 0).toLocaleString()}` },
       ]
     });
     
-    // Show yesterday's campaign names if any
-    if (klaviyo.daily?.campaigns?.length > 0) {
-      const campaignNames = klaviyo.daily.campaigns.map(c => c.name).join(", ");
+    // Show yesterday's campaigns if any
+    if (klaviyo.daily?.campaignNames?.length > 0) {
       blocks.push({
         type: "section",
-        text: { type: "mrkdwn", text: `📨 *Yesterday:* ${campaignNames}` }
+        text: { type: "mrkdwn", text: `📨 *Yesterday:* ${klaviyo.daily.campaignNames.join(", ")}` }
       });
     }
     
-    // Show active flows
-    if (klaviyo.flows?.topFlows?.length > 0) {
-      const flowNames = klaviyo.flows.topFlows.slice(0, 3).join(", ");
+    // Show last 7 days campaigns
+    if (klaviyo.last7Days?.campaignNames?.length > 0 && klaviyo.last7Days.campaignsSent > 0) {
+      const recent = klaviyo.last7Days.campaignNames.slice(0, 3).join(", ");
       blocks.push({
         type: "section",
-        text: { type: "mrkdwn", text: `🔄 *Active Flows:* ${flowNames}` }
+        text: { type: "mrkdwn", text: `📅 *Last 7 Days:* ${recent}${klaviyo.last7Days.campaignsSent > 3 ? ` (+${klaviyo.last7Days.campaignsSent - 3} more)` : ""}` }
+      });
+    }
+    
+    // Show active flows - this is important!
+    if (klaviyo.flows?.flowNames?.length > 0) {
+      const flowList = klaviyo.flows.flowNames.join(", ");
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: `🔄 *Active Flows (${klaviyo.flows.active}):* ${flowList}` }
+      });
+    } else if (klaviyo.flows?.active === 0) {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: `⚠️ *No active flows detected* - Check Klaviyo dashboard to ensure automations are running` }
       });
     }
   }
