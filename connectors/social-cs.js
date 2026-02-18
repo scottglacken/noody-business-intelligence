@@ -133,7 +133,7 @@ async function getSocialData(accountId, accessToken, businessName) {
       }),
       axios.get(`${base}/${accountId}/insights`, {
         params: {
-          metric: "reach,impressions,profile_views,follower_count",
+          metric: "impressions,reach,profile_views",
           period: "day",
           since: Math.floor(yesterday.getTime() / 1000),
           until: Math.floor(today.getTime() / 1000),
