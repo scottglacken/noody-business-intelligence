@@ -29,14 +29,32 @@ async function collectData(businessKey) {
   const collectors = [];
 
   // Shopify
-  if (config.shopify[businessKey]?.storeName && config.shopify[businessKey]?.accessToken) {
-    collectors.push(
-      getShopifyData(
-        config.shopify[businessKey].storeName,
-        config.shopify[businessKey].accessToken,
-        businessName
-      ).catch(err => ({ source: "shopify", error: err.message }))
-    );
+  if (config.shopify[businessKey]?.storeName) {
+    const shopifyConfig = config.shopify[businessKey];
+    console.log(`[DEBUG] Shopify config for ${businessKey}:`, {      storeName: shopifyConfig.storeName,
+      hasClientId: !!shopifyConfig.clientId,
+      hasClientSecret: !!shopifyConfig.clientSecret
+    });
+    // Support both new (client credentials) and old (direct token) methods
+    if (shopifyConfig.clientId && shopifyConfig.clientSecret) {
+      collectors.push(
+        getShopifyData(
+          shopifyConfig.storeName,
+          shopifyConfig.clientId,
+          shopifyConfig.clientSecret,
+          businessName
+        ).catch(err => ({ source: "shopify", error: err.message }))
+      );
+    } else if (shopifyConfig.accessToken) {
+      collectors.push(
+        getShopifyData(
+          shopifyConfig.storeName,
+          shopifyConfig.accessToken,
+          null,
+          businessName
+        ).catch(err => ({ source: "shopify", error: err.message }))
+      );
+    }
   }
 
   // Meta Ads
