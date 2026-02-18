@@ -57,6 +57,7 @@ Please provide your analysis in this exact JSON structure:
   "departmentScores": {
     "revenue": { "score": "green|yellow|red", "note": "brief note" },
     "marketing": { "score": "green|yellow|red", "note": "brief note" },
+    "email": { "score": "green|yellow|red", "note": "brief note on Klaviyo/email performance" },
     "social": { "score": "green|yellow|red", "note": "brief note on Instagram/social performance" },
     "inventory": { "score": "green|yellow|red", "note": "brief note" },
     "customerService": { "score": "green|yellow|red", "note": "brief note" },
