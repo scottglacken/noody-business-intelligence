@@ -175,8 +175,8 @@ async function getSocialData(accountId, accessToken, businessName) {
     };
 
   } catch (err) {
-    console.error(`[Social/${businessName}] Error:`, err.response?.data || err.message);
-    return { business: businessName, source: "instagram", error: err.message };
+    console.error(`[Social/${businessName}] Error:`, JSON.stringify(err.response?.data || err.message));
+    return { business: businessName, source: "instagram", error: err.response?.data || err.message };
   }
 }
 
