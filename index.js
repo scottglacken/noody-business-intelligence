@@ -154,7 +154,19 @@ async function collectData(businessKey) {
 // ─────────────────────────────────────────────────────────────
 async function runBusinessReport(businessKey) {
   const businessName = config.businesses[businessKey]?.name || businessKey;
-  const dateStr = new Date().toLocaleDateString("en-NZ", {
+  
+  // Calculate yesterday's date for the data
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  // Format dates clearly
+  const reportDate = yesterday.toLocaleDateString("en-NZ", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+    timeZone: config.schedule.timezone
+  });
+  
+  const generatedDate = today.toLocaleDateString("en-NZ", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
     timeZone: config.schedule.timezone
   });
@@ -165,7 +177,7 @@ async function runBusinessReport(businessKey) {
 
     // Step 2: AI Analysis
     console.log(`[${businessName}] Running AI analysis...`);
-    const analysis = await analyzeBusinessData(data, config, businessName);
+    const analysis = await analyzeBusinessData(data, config, businessName, reportDate);
 
     if (analysis.error) {
       console.error(`[${businessName}] AI analysis failed:`, analysis.error);
@@ -180,7 +192,7 @@ async function runBusinessReport(businessKey) {
       const channelId = config.slack.channels[`${businessKey}Daily`] || config.slack.channels.combined;
       if (channelId) {
         deliveries.push(
-          sendSlackReport(config.slack.botToken, channelId, analysis, data, businessName, dateStr)
+          sendSlackReport(config.slack.botToken, channelId, analysis, data, businessName, reportDate)
             .catch(err => console.error(`[Slack/${businessName}] Failed:`, err.message))
         );
       }
@@ -189,7 +201,7 @@ async function runBusinessReport(businessKey) {
     // Combined channel
     if (config.slack?.channels?.combined && config.slack.channels.combined !== config.slack.channels[`${businessKey}Daily`]) {
       deliveries.push(
-        sendSlackReport(config.slack.botToken, config.slack.channels.combined, analysis, data, businessName, dateStr)
+        sendSlackReport(config.slack.botToken, config.slack.channels.combined, analysis, data, businessName, reportDate)
           .catch(err => console.error(`[Slack/Combined] Failed:`, err.message))
       );
     }
@@ -197,7 +209,7 @@ async function runBusinessReport(businessKey) {
     // Email
     if (config.email?.apiKey && config.email.recipients?.length > 0) {
       deliveries.push(
-        sendEmailReport(config.email, analysis, data, businessName, dateStr)
+        sendEmailReport(config.email, analysis, data, businessName, reportDate)
           .catch(err => console.error(`[Email/${businessName}] Failed:`, err.message))
       );
     }

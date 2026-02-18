@@ -102,19 +102,29 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
     const mtdOrders = mtdRes.data.orders || [];
     const weekOrders = wow7Res.data.orders || [];
 
-    // ── Revenue Calculations ────────────────────────────────
-    const revenue = orders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
-    const mtdRevenue = mtdOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    // CRITICAL FIX: Filter to only PAID orders (exclude drafts, cancelled, refunded)
+    const paidOrders = orders.filter(o => 
+      o.financial_status === 'paid' || o.financial_status === 'partially_paid'
+    );
+    const paidMtdOrders = mtdOrders.filter(o => 
+      o.financial_status === 'paid' || o.financial_status === 'partially_paid'
+    );
+
+    console.log(`[Shopify/${businessName}] Total orders: ${orders.length}, Paid orders: ${paidOrders.length}`);
+
+    // ── Revenue Calculations (ONLY PAID ORDERS) ────────────────────────────────
+    const revenue = paidOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    const mtdRevenue = paidMtdOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
     const refundAmount = (refundsRes.data.orders || []).reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
 
-    // ── New vs Returning Customers ──────────────────────────
-    const customerIds = orders.map(o => o.customer?.id).filter(Boolean);
+    // ── New vs Returning Customers (ONLY PAID ORDERS) ──────────────────────────
+    const customerIds = paidOrders.map(o => o.customer?.id).filter(Boolean);
     const uniqueCustomers = new Set(customerIds).size;
-    const newCustomers = orders.filter(o => o.customer?.orders_count === 1).length;
+    const newCustomers = paidOrders.filter(o => o.customer?.orders_count === 1).length;
 
-    // ── Top Products ────────────────────────────────────────
+    // ── Top Products (ONLY PAID ORDERS) ────────────────────────────────────────
     const productSales = {};
-    orders.forEach(order => {
+    paidOrders.forEach(order => {
       (order.line_items || []).forEach(item => {
         const key = item.title;
         if (!productSales[key]) productSales[key] = { qty: 0, revenue: 0 };
@@ -128,16 +138,16 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
       .slice(0, 5)
       .map(([name, data]) => ({ name, ...data }));
 
-    // ── Traffic Source Breakdown ────────────────────────────
+    // ── Traffic Source Breakdown (ONLY PAID ORDERS) ────────────────────────────
     const sourceBreakdown = {};
-    orders.forEach(o => {
+    paidOrders.forEach(o => {
       const src = o.source_name || "unknown";
       sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1;
     });
 
-    // ── Average Order Value ─────────────────────────────────
-    const aov = orders.length > 0 ? revenue / orders.length : 0;
-    const mtdAov = mtdOrders.length > 0 ? mtdRevenue / mtdOrders.length : 0;
+    // ── Average Order Value (ONLY PAID ORDERS) ─────────────────────────────────
+    const aov = paidOrders.length > 0 ? revenue / paidOrders.length : 0;
+    const mtdAov = paidMtdOrders.length > 0 ? mtdRevenue / paidMtdOrders.length : 0;
 
     // ── Week-over-week comparison (last 7 days vs prior 7) ──
     const last7Rev = weekOrders
@@ -149,7 +159,7 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
       source: "shopify",
       date: yesterday.toDateString(),
       daily: {
-        orders: orders.length,
+        orders: paidOrders.length,
         revenue: Math.round(revenue * 100) / 100,
         aov: Math.round(aov * 100) / 100,
         refunds: Math.round(refundAmount * 100) / 100,
@@ -159,7 +169,7 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
         topProducts,
       },
       mtd: {
-        orders: mtdOrders.length,
+        orders: paidMtdOrders.length,
         revenue: Math.round(mtdRevenue * 100) / 100,
         aov: Math.round(mtdAov * 100) / 100,
         daysElapsed: today.getDate() - 1,

@@ -3,11 +3,12 @@
 
 const Anthropic = require("@anthropic-ai/sdk");
 
-async function analyzeBusinessData(allData, config, businessName) {
+async function analyzeBusinessData(allData, config, businessName, reportDate) {
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString("en-NZ", {
+  // reportDate is the date the data is FOR (yesterday)
+  // This is passed in to avoid confusion with "today"
+  const dataDate = reportDate || new Date().toLocaleDateString("en-NZ", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
     timeZone: config.businesses.noody?.timezone || "Pacific/Auckland"
   });
@@ -26,9 +27,11 @@ Your job is to analyze daily business data and provide:
 Be direct, specific, and action-oriented. Use actual numbers from the data. 
 Flag anything that needs urgent attention. 
 Benchmark against industry standards where relevant.
-Keep the tone professional but energetic — this is a team daily briefing.`;
+Keep the tone professional but energetic — this is a team daily briefing.
 
-  const userPrompt = `Analyze this business data for ${businessName} for ${dateStr}:
+IMPORTANT: The data you're analyzing is for YESTERDAY (${dataDate}). When writing the summary, refer to it as "yesterday" or state the specific date, NOT as "today" or "Tuesday" if that's incorrect.`;
+
+  const userPrompt = `Analyze yesterday's business data for ${businessName} (${dataDate}):
 
 ${JSON.stringify(allData, null, 2)}
 
