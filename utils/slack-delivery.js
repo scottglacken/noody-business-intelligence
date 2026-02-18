@@ -96,6 +96,29 @@ function buildSlackBlocks(analysis, data, businessName, date) {
     });
   }
 
+  // ── Klaviyo Email Marketing ────────────────────────────────
+  const klaviyo = data.find(d => d.source === "klaviyo");
+  if (klaviyo && !klaviyo.error) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "*📧 Email Marketing (Yesterday)*" },
+      fields: [
+        { type: "mrkdwn", text: `*Campaigns Sent*\n${klaviyo.daily?.campaignsSent || 0}` },
+        { type: "mrkdwn", text: `*Active Lists*\n${klaviyo.lists?.totalLists || 0}` },
+        { type: "mrkdwn", text: `*Recent Campaigns (7d)*\n${klaviyo.recent?.campaignsLast7Days || 0}` },
+      ]
+    });
+    
+    // Show yesterday's campaign names if any
+    if (klaviyo.daily?.campaigns?.length > 0) {
+      const campaignNames = klaviyo.daily.campaigns.map(c => c.name).join(", ");
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: `📨 *Campaigns:* ${campaignNames}` }
+      });
+    }
+  }
+
   if (ga4 && !ga4.error) {
     blocks.push({
       type: "section",
