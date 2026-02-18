@@ -105,8 +105,8 @@ function buildSlackBlocks(analysis, data, businessName, date) {
       fields: [
         { type: "mrkdwn", text: `*Campaigns (Yesterday)*\n${klaviyo.daily?.campaignsSent || 0}` },
         { type: "mrkdwn", text: `*Campaigns (7d)*\n${klaviyo.last7Days?.campaignsSent || 0}` },
-        { type: "mrkdwn", text: `*Active Flows*\n${klaviyo.flows?.active || 0}/${klaviyo.flows?.total || 0}` },
-        { type: "mrkdwn", text: `*Subscribers*\n${(klaviyo.lists?.totalSubscribers || 0).toLocaleString()}` },
+        { type: "mrkdwn", text: `*Flows (Active)*\n${klaviyo.flows?.active || 0}/${klaviyo.flows?.total || 0}` },
+        { type: "mrkdwn", text: `*Lists*\n${klaviyo.lists?.total || 0}` },
       ]
     });
     
@@ -134,10 +134,14 @@ function buildSlackBlocks(analysis, data, businessName, date) {
         type: "section",
         text: { type: "mrkdwn", text: `🔄 *Active Flows (${klaviyo.flows.active}):* ${flowList}` }
       });
-    } else if (klaviyo.flows?.active === 0) {
+    } else if (klaviyo.flows?.total > 0) {
+      // Show all flow statuses for debugging
+      const statusInfo = klaviyo.flows.allFlowStatuses?.slice(0, 3).map(f => 
+        `${f.name} (${f.status}${f.archived ? ', archived' : ''})`
+      ).join(", ");
       blocks.push({
         type: "section",
-        text: { type: "mrkdwn", text: `⚠️ *No active flows detected* - Check Klaviyo dashboard to ensure automations are running` }
+        text: { type: "mrkdwn", text: `⚠️ *${klaviyo.flows.total} flows exist but 0 detected as active*\nStatuses: ${statusInfo || 'Check Klaviyo dashboard'}` }
       });
     }
   }
