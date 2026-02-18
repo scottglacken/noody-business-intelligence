@@ -1,3 +1,4 @@
+// Updated: Feb 19, 2026 - Fixed paid orders filter
 // connectors/shopify.js
 // Pulls yesterday's orders, revenue, refunds, top products
 // Updated for 2026: Uses OAuth client credentials grant flow
