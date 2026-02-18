@@ -21,6 +21,8 @@ Your job is to analyze daily business data and provide:
 3. 3-5 prioritized action items for today
 4. Notable trends or anomalies
 
+**CRITICAL: Pay special attention to social media performance** - follower growth, engagement rates, and content performance are key growth indicators.
+
 Be direct, specific, and action-oriented. Use actual numbers from the data. 
 Flag anything that needs urgent attention. 
 Benchmark against industry standards where relevant.
@@ -35,6 +37,8 @@ Industry benchmarks for context:
 - Meta ROAS: poor <1.5x, average 3x, good >5x
 - Email open rate: poor <15%, average 25%, good >40%
 - Customer response time: poor >24h, good <2h
+- Instagram engagement rate: poor <1%, average 2-3%, good >4%
+- Instagram follower growth: poor <1%/month, good >5%/month
 
 Please provide your analysis in this exact JSON structure:
 {
@@ -53,6 +57,7 @@ Please provide your analysis in this exact JSON structure:
   "departmentScores": {
     "revenue": { "score": "green|yellow|red", "note": "brief note" },
     "marketing": { "score": "green|yellow|red", "note": "brief note" },
+    "social": { "score": "green|yellow|red", "note": "brief note on Instagram/social performance" },
     "inventory": { "score": "green|yellow|red", "note": "brief note" },
     "customerService": { "score": "green|yellow|red", "note": "brief note" },
     "cashflow": { "score": "green|yellow|red", "note": "brief note" }
