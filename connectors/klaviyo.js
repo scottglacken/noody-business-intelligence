@@ -12,25 +12,28 @@ async function getKlaviyoData(apiKey) {
   const fmt = (d) => d.toISOString();
 
   try {
-    // Get recent campaigns (last 7 days)
+    // Get recent campaigns
     const campaignsRes = await axios.get(`${base}/campaigns`, {
       headers,
       params: {
-        "fields[campaign]": "name,send_time,status,audiences",
-        "page[size]": 20,
+        "fields[campaign]": "name,send_time,status",
       }
     });
 
-    const campaigns = (campaignsRes.data.data || [])
+    const allCampaigns = campaignsRes.data.data || [];
+    
+    // Filter to last 7 days
+    const campaigns = allCampaigns
       .filter(c => {
-        const sendTime = new Date(c.attributes?.send_time);
+        if (!c.attributes?.send_time) return false;
+        const sendTime = new Date(c.attributes.send_time);
         const daysDiff = (today - sendTime) / (1000 * 60 * 60 * 24);
         return daysDiff <= 7 && daysDiff >= 0;
       })
       .slice(0, 10);
 
     const yesterdayCampaigns = campaigns.filter(c => {
-      const sendTime = new Date(c.attributes?.send_time);
+      const sendTime = new Date(c.attributes.send_time);
       return sendTime >= yesterday && sendTime < today;
     });
 
