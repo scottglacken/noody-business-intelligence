@@ -6,9 +6,13 @@ const axios = require("axios");
 async function getMetaData(accessToken, adAccountId, businessName) {
   const base = "https://graph.facebook.com/v19.0";
 
-  // Get current date in NZ timezone (Pacific/Auckland)
-  const nzTime = new Date().toLocaleString("en-US", { timeZone: "Pacific/Auckland" });
-  const today = new Date(nzTime);
+  // Get NZ time by adding UTC offset (currently +13 for NZDT, +12 for NZST)
+  // Feb 2026 is summer, so NZDT (UTC+13)
+  const now = new Date();
+  const nzOffset = 13 * 60; // minutes
+  const nzTime = new Date(now.getTime() + (nzOffset * 60 * 1000) + (now.getTimezoneOffset() * 60 * 1000));
+  
+  const today = new Date(nzTime.toISOString().split('T')[0]);
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
@@ -32,6 +36,8 @@ async function getMetaData(accessToken, adAccountId, businessName) {
 
   try {
     // ── Account Level (yesterday) ───────────────────────────
+    console.log(`[Meta/${businessName}] Querying date range: ${fmt(yesterday)} (yesterday in NZ)`);
+    
     const [accountRes, campaignRes, adsetRes] = await Promise.all([
       axios.get(`${base}/${adAccountId}/insights`, { params }),
       axios.get(`${base}/${adAccountId}/insights`, {
@@ -51,6 +57,8 @@ async function getMetaData(accessToken, adAccountId, businessName) {
         }
       }),
     ]);
+
+    console.log(`[Meta/${businessName}] API Response:`, JSON.stringify(accountRes.data, null, 2));
 
     const accountData = accountRes.data.data?.[0] || {};
     const campaigns = campaignRes.data.data || [];
