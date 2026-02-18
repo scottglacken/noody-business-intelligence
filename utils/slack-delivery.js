@@ -101,11 +101,13 @@ function buildSlackBlocks(analysis, data, businessName, date) {
   if (klaviyo && !klaviyo.error) {
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "*📧 Email Marketing (Yesterday)*" },
+      text: { type: "mrkdwn", text: "*📧 Email Marketing*" },
       fields: [
-        { type: "mrkdwn", text: `*Campaigns Sent*\n${klaviyo.daily?.campaignsSent || 0}` },
-        { type: "mrkdwn", text: `*Active Lists*\n${klaviyo.lists?.totalLists || 0}` },
-        { type: "mrkdwn", text: `*Recent Campaigns (7d)*\n${klaviyo.recent?.campaignsLast7Days || 0}` },
+        { type: "mrkdwn", text: `*Campaigns (Yesterday)*\n${klaviyo.daily?.campaignsSent || 0}` },
+        { type: "mrkdwn", text: `*Campaigns (30d)*\n${klaviyo.last30Days?.totalCampaigns || 0}` },
+        { type: "mrkdwn", text: `*Active Flows*\n${klaviyo.flows?.active || 0} of ${klaviyo.flows?.total || 0}` },
+        { type: "mrkdwn", text: `*Avg Recipients/Campaign*\n${(klaviyo.last30Days?.avgRecipientsPerCampaign || 0).toLocaleString()}` },
+        { type: "mrkdwn", text: `*Email Lists*\n${klaviyo.lists?.totalLists || 0}` },
       ]
     });
     
@@ -114,7 +116,16 @@ function buildSlackBlocks(analysis, data, businessName, date) {
       const campaignNames = klaviyo.daily.campaigns.map(c => c.name).join(", ");
       blocks.push({
         type: "section",
-        text: { type: "mrkdwn", text: `📨 *Campaigns:* ${campaignNames}` }
+        text: { type: "mrkdwn", text: `📨 *Yesterday:* ${campaignNames}` }
+      });
+    }
+    
+    // Show active flows
+    if (klaviyo.flows?.topFlows?.length > 0) {
+      const flowNames = klaviyo.flows.topFlows.slice(0, 3).join(", ");
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: `🔄 *Active Flows:* ${flowNames}` }
       });
     }
   }
