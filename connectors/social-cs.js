@@ -120,13 +120,13 @@ async function getSocialData(accountId, accessToken, businessName) {
     const [profileRes, mediaRes, insightsRes] = await Promise.all([
       axios.get(`${base}/${accountId}`, {
         params: {
-          fields: "followers_count,media_count,name,username",
+          fields: "followers_count,follows_count,media_count,name,username",
           access_token: accessToken,
         }
       }),
       axios.get(`${base}/${accountId}/media`, {
         params: {
-          fields: "id,caption,media_type,timestamp,like_count,comments_count,reach,impressions,engagement",
+          fields: "id,caption,media_type,media_url,timestamp,like_count,comments_count,permalink",
           limit: 10,
           access_token: accessToken,
         }
@@ -143,7 +143,7 @@ async function getSocialData(accountId, accessToken, businessName) {
     ]);
 
     const profile = profileRes.data;
-    const recentMedia = (mediaRes.data.data || []).slice(0, 5);
+    const recentMedia = (mediaRes.data.data || []).slice(0, 10);
     const insights = insightsRes.data.data || [];
 
     const getInsightValue = (name) => {
@@ -152,24 +152,44 @@ async function getSocialData(accountId, accessToken, businessName) {
       return latest?.value || 0;
     };
 
+    // Calculate engagement metrics
+    const totalEngagement = recentMedia.reduce((sum, post) => 
+      sum + (post.like_count || 0) + (post.comments_count || 0), 0
+    );
+    const avgEngagement = recentMedia.length > 0 ? Math.round(totalEngagement / recentMedia.length) : 0;
+    const engagementRate = profile.followers_count > 0 
+      ? ((avgEngagement / profile.followers_count) * 100).toFixed(2) 
+      : 0;
+
     return {
       business: businessName,
       source: "instagram",
       profile: {
         followers: profile.followers_count,
+        following: profile.follows_count,
         totalPosts: profile.media_count,
         username: profile.username,
       },
       daily: {
         reach: getInsightValue("reach"),
       },
-      recentPosts: recentMedia.map(p => ({
-        type: p.media_type,
-        likes: p.like_count || 0,
-        comments: p.comments_count || 0,
-        postedAt: p.timestamp,
-        captionPreview: (p.caption || "").substring(0, 80),
-      }))
+      engagement: {
+        avgLikesPerPost: recentMedia.length > 0 ? Math.round(recentMedia.reduce((sum, p) => sum + (p.like_count || 0), 0) / recentMedia.length) : 0,
+        avgCommentsPerPost: recentMedia.length > 0 ? Math.round(recentMedia.reduce((sum, p) => sum + (p.comments_count || 0), 0) / recentMedia.length) : 0,
+        engagementRate: parseFloat(engagementRate),
+      },
+      topPosts: recentMedia
+        .sort((a, b) => ((b.like_count || 0) + (b.comments_count || 0)) - ((a.like_count || 0) + (a.comments_count || 0)))
+        .slice(0, 3)
+        .map(p => ({
+          type: p.media_type,
+          likes: p.like_count || 0,
+          comments: p.comments_count || 0,
+          engagement: (p.like_count || 0) + (p.comments_count || 0),
+          postedAt: p.timestamp,
+          url: p.permalink,
+          captionPreview: (p.caption || "").substring(0, 100),
+        }))
     };
 
   } catch (err) {
