@@ -34,8 +34,8 @@ jobs:
 
       - name: Create Google credentials file
         run: |
-       mkdir -p credentials
-       echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > credentials/google-sa.json
+          mkdir -p credentials
+          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > credentials/google-sa.json
 
       - name: Run daily report
         env:
