@@ -133,7 +133,7 @@ async function getSocialData(accountId, accessToken, businessName) {
       }),
       axios.get(`${base}/${accountId}/insights`, {
         params: {
-          metric: "reach,profile_views",
+          metric: "reach",
           period: "day",
           since: Math.floor(yesterday.getTime() / 1000),
           until: Math.floor(today.getTime() / 1000),
@@ -162,7 +162,6 @@ async function getSocialData(accountId, accessToken, businessName) {
       },
       daily: {
         reach: getInsightValue("reach"),
-        profileViews: getInsightValue("profile_views"),
       },
       recentPosts: recentMedia.map(p => ({
         type: p.media_type,
