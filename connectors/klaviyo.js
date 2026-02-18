@@ -12,10 +12,11 @@ async function getKlaviyoData(apiKey) {
   const fmt = (d) => d.toISOString();
 
   try {
-    // Get recent campaigns
+    // Get recent email campaigns
     const campaignsRes = await axios.get(`${base}/campaigns`, {
       headers,
       params: {
+        "filter": "equals(messages.channel,'email')",
         "fields[campaign]": "name,send_time,status",
       }
     });
