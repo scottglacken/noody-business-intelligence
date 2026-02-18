@@ -12,17 +12,27 @@ async function getKlaviyoData(apiKey) {
   const fmt = (d) => d.toISOString();
 
   try {
-    // Get campaigns sent yesterday
+    // Get recent campaigns (last 7 days)
     const campaignsRes = await axios.get(`${base}/campaigns`, {
       headers,
       params: {
-        "filter": `and(equals(messages.channel,'email'),greater-or-equal(send_time,'${fmt(yesterday)}'),less-than(send_time,'${fmt(today)}'))`,
-        "fields[campaign]": "name,send_time,status",
-        "fields[campaign-message]": "label",
+        "fields[campaign]": "name,send_time,status,audiences",
+        "page[size]": 20,
       }
     });
 
-    const campaigns = campaignsRes.data.data || [];
+    const campaigns = (campaignsRes.data.data || [])
+      .filter(c => {
+        const sendTime = new Date(c.attributes?.send_time);
+        const daysDiff = (today - sendTime) / (1000 * 60 * 60 * 24);
+        return daysDiff <= 7 && daysDiff >= 0;
+      })
+      .slice(0, 10);
+
+    const yesterdayCampaigns = campaigns.filter(c => {
+      const sendTime = new Date(c.attributes?.send_time);
+      return sendTime >= yesterday && sendTime < today;
+    });
 
     // Get flows metrics
     const metricsRes = await axios.get(`${base}/metrics`, { headers });
@@ -49,12 +59,15 @@ async function getKlaviyoData(apiKey) {
     return {
       source: "klaviyo",
       daily: {
-        campaignsSent: campaigns.length,
-        campaigns: campaigns.map(c => ({ name: c.attributes?.name, sentAt: c.attributes?.send_time })),
+        campaignsSent: yesterdayCampaigns.length,
+        campaigns: yesterdayCampaigns.map(c => ({ name: c.attributes?.name, sentAt: c.attributes?.send_time })),
+      },
+      recent: {
+        campaignsLast7Days: campaigns.length,
       },
       lists: lists.map(l => ({ name: l.attributes?.name, subscribers: l.attributes?.profile_count })),
       totalSubscribers,
-      note: "For detailed open/click rates, pull from campaign-specific reporting endpoints"
+      note: "Campaign-level open/click rates require individual campaign metric queries"
     };
 
   } catch (err) {
