@@ -69,8 +69,9 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
       axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(lastMonthStartNZ), created_at_max: fmt(lastMonthEndNZ), limit: 250, fields: summaryFields } }),
     ]);
 
-    // Filter paid orders
-    const filterPaid = (orders) => (orders || []).filter(o => o.financial_status === "paid" || o.financial_status === "partially_paid");
+    // Filter valid orders (paid, authorized, pending — matches Shopify dashboard "Total Sales")
+    const validStatuses = ["paid", "partially_paid", "pending", "authorized", "partially_refunded"];
+    const filterPaid = (orders) => (orders || []).filter(o => validStatuses.includes(o.financial_status));
     const paidYesterday = filterPaid(yesterdayRes.data.orders);
     const paidDayBefore = filterPaid(dayBeforeRes.data.orders);
     const paidMtd = filterPaid(mtdRes.data.orders);
@@ -78,7 +79,10 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
     const paidPrevWeek = filterPaid(prevWeekRes.data.orders);
     const paidLastMonth = filterPaid(lastMonthRes.data.orders);
 
-    console.log(`[Shopify/${businessName}] Yesterday: ${(yesterdayRes.data.orders||[]).length} total, ${paidYesterday.length} paid`);
+    console.log(`[Shopify/${businessName}] Yesterday: ${(yesterdayRes.data.orders||[]).length} total, ${paidYesterday.length} valid`);
+    const statusCounts = {};
+    (yesterdayRes.data.orders||[]).forEach(o => { statusCounts[o.financial_status] = (statusCounts[o.financial_status]||0) + 1; });
+    console.log(`[Shopify/${businessName}] Status breakdown:`, JSON.stringify(statusCounts));
 
     // Revenue helpers
     const calcRev = (orders) => orders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
@@ -93,21 +97,37 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
     const pwRevenue = calcRev(paidPrevWeek);
     const lmRevenue = calcRev(paidLastMonth);
 
-    // Targets
+    // Dynamic targets — use last month actual + YTD trend (no arbitrary hardcoded target)
     const daysInMonth = new Date(todayNZ.getFullYear(), todayNZ.getMonth() + 1, 0).getDate();
-    const dailyTarget = 83000 / daysInMonth;
-    const mtdTarget = dailyTarget * Math.max(todayNZ.getDate() - 1, 1);
+    const daysElapsed = Math.max(todayNZ.getDate() - 1, 1);
+    
+    // YTD average as primary benchmark
+    const yearStartNZ = new Date(todayNZ.getFullYear(), 0, 1);
+    const daysInYear = Math.max(Math.floor((todayNZ - yearStartNZ) / 86400000), 1);
+    
+    // Use last month as the monthly benchmark (or MTD run rate if no last month data)
+    const lmDailyAvg = lmRevenue > 0 ? lmRevenue / new Date(todayNZ.getFullYear(), todayNZ.getMonth(), 0).getDate() : 0;
+    const mtdDailyAvg = mtdRevenue / daysElapsed;
+    
+    // Primary benchmark: last month's daily average (realistic, data-driven)
+    const dailyBenchmark = lmDailyAvg > 0 ? lmDailyAvg : mtdDailyAvg;
+    const monthlyBenchmark = dailyBenchmark * daysInMonth;
+    const mtdTarget = dailyBenchmark * daysElapsed;
 
     // Customer metrics
     const customerStats = (orders) => {
-      const newC = orders.filter(o => o.customer?.orders_count === 1).length;
+      const newC = orders.filter(o => {
+        const oc = o.customer?.orders_count;
+        return oc === 1 || oc === undefined || oc === null;
+      }).length;
       const retC = orders.filter(o => (o.customer?.orders_count || 0) > 1).length;
-      const total = newC + retC;
+      const total = orders.length;
       return { new: newC, returning: retC, returningRate: total > 0 ? Math.round((retC / total) * 100) : 0 };
     };
 
     const yCust = customerStats(paidYesterday);
     const mtdCust = customerStats(paidMtd);
+    console.log(`[Shopify/${businessName}] Customer orders_count values:`, paidYesterday.map(o => o.customer?.orders_count));
 
     // Discounts
     const totalDiscounts = paidYesterday.reduce((s, o) => s + parseFloat(o.total_discounts || 0), 0);
@@ -142,17 +162,17 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
     const sourceBreakdown = {};
     paidYesterday.forEach(o => { const s = o.source_name || "unknown"; sourceBreakdown[s] = (sourceBreakdown[s] || 0) + 1; });
 
-    // Scoring
+    // Scoring (vs last month's daily average)
     let revenueScore = "red";
-    if (yRevenue >= dailyTarget) revenueScore = "green";
-    else if (yRevenue >= dailyTarget * 0.7) revenueScore = "yellow";
+    if (yRevenue >= dailyBenchmark) revenueScore = "green";
+    else if (yRevenue >= dailyBenchmark * 0.7) revenueScore = "yellow";
 
     const dodChange = dbRevenue > 0 ? Math.round(((yRevenue - dbRevenue) / dbRevenue) * 100) : 0;
     const wowChange = pwRevenue > 0 ? Math.round(((lwRevenue - pwRevenue) / pwRevenue) * 100) : 0;
     const mtdPace = mtdTarget > 0 ? Math.round((mtdRevenue / mtdTarget) * 100) : 0;
-    const projectedMonthly = Math.round(((mtdRevenue / Math.max(todayNZ.getDate() - 1, 1)) * daysInMonth) * 100) / 100;
+    const projectedMonthly = Math.round((mtdDailyAvg * daysInMonth) * 100) / 100;
 
-    console.log(`[Shopify/${businessName}] Revenue: $${yRevenue.toFixed(2)} (target: $${dailyTarget.toFixed(2)}) | Score: ${revenueScore}`);
+    console.log(`[Shopify/${businessName}] Revenue: $${yRevenue.toFixed(2)} (last month avg: $${dailyBenchmark.toFixed(2)}/day) | Score: ${revenueScore}`);
     console.log(`[Shopify/${businessName}] MTD: $${mtdRevenue.toFixed(2)} / $${mtdTarget.toFixed(2)} (${mtdPace}%) | Projected: $${projectedMonthly}`);
     console.log(`[Shopify/${businessName}] Returning rate: ${yCust.returningRate}% | AOV: $${calcAOV(paidYesterday).toFixed(2)}`);
 
@@ -183,9 +203,9 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
         orders: paidMtd.length,
         revenue: Math.round(mtdRevenue * 100) / 100,
         aov: Math.round(calcAOV(paidMtd) * 100) / 100,
-        daysElapsed: todayNZ.getDate() - 1,
+        daysElapsed,
         target: Math.round(mtdTarget * 100) / 100,
-        monthlyTarget: 83000,
+        monthlyBenchmark: Math.round(monthlyBenchmark * 100) / 100,
         pacePercent: mtdPace,
         projectedMonthly,
         newCustomers: mtdCust.new,
@@ -195,11 +215,13 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
       },
       performance: {
         revenueScore,
-        dailyTarget: Math.round(dailyTarget * 100) / 100,
-        vsTargetPercent: Math.round(((yRevenue / dailyTarget) * 100) - 100),
+        dailyBenchmark: Math.round(dailyBenchmark * 100) / 100,
+        vsLastMonthAvg: dailyBenchmark > 0 ? Math.round(((yRevenue / dailyBenchmark) * 100) - 100) : 0,
         dodChange,
         wowChange,
         mtdPace,
+        lastMonthDailyAvg: Math.round(lmDailyAvg * 100) / 100,
+        mtdDailyAvg: Math.round(mtdDailyAvg * 100) / 100,
       },
     };
   } catch (err) {

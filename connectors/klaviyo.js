@@ -39,7 +39,7 @@ async function getKlaviyoData(apiKey) {
       params: {
         "filter": "equals(messages.channel,'email')",
         "fields[campaign]": "name,send_time,status,audiences",
-        "sort": "-send_time",
+        "sort": "-scheduled_at",
       }
     });
 

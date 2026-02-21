@@ -17,7 +17,7 @@ module.exports = {
       name: "Noody Skincare",
       currency: "NZD",
       timezone: "Pacific/Auckland",
-      revenueTarget: { monthly: 83000 },
+      revenueTarget: { monthly: "dynamic" }, // Uses last month's actual as benchmark
       profitMarginTarget: 0.30,
     },
     facialist: {
