@@ -1,7 +1,11 @@
-// index.js — Main Orchestrator
-// Run this file daily via cron, GitHub Actions, or Railway
-// Usage: node index.js
-// Or scheduled: node index.js --schedule
+// index.js — Main Orchestrator (REWRITE Feb 2026)
+// Multi-channel report routing:
+//   - Daily summary → #noody-daily
+//   - Shopify detail → #noody-ecommerce
+//   - Meta/Google Ads → #noody-ppc
+//   - Klaviyo → #noody-marketing
+//   - Social → #noody-social
+//   - Xero → #noody-finance
 
 require("dotenv").config();
 const cron = require("node-cron");
@@ -13,14 +17,19 @@ const { getGoogleAdsData, getGA4Data } = require("./connectors/google");
 const { getKlaviyoData } = require("./connectors/klaviyo");
 const { getXeroData } = require("./connectors/xero");
 const { getUnleashedData } = require("./connectors/unleashed");
-const { getCustomerServiceData, getSocialData } = require("./connectors/social-cs");
+const { getSocialData } = require("./connectors/social-cs");
 
 const { analyzeBusinessData } = require("./utils/analyzer");
 const { sendSlackReport } = require("./utils/slack-delivery");
 const { sendEmailReport } = require("./utils/email-delivery");
+const { sendSocialReport } = require("./utils/social-report");
+const { sendEcommerceReport } = require("./utils/ecommerce-report");
+const { sendPPCReport } = require("./utils/ppc-report");
+const { sendMarketingReport } = require("./utils/marketing-report");
+const { sendFinanceReport } = require("./utils/finance-report");
 
 // ─────────────────────────────────────────────────────────────
-// COLLECT ALL DATA FOR ONE BUSINESS
+// COLLECT ALL DATA
 // ─────────────────────────────────────────────────────────────
 async function collectData(businessKey) {
   const businessName = config.businesses[businessKey]?.name || businessKey;
@@ -30,118 +39,73 @@ async function collectData(businessKey) {
 
   // Shopify
   if (config.shopify[businessKey]?.storeName) {
-    const shopifyConfig = config.shopify[businessKey];
-    // Support both new (client credentials) and old (direct token) methods
-    if (shopifyConfig.clientId && shopifyConfig.clientSecret) {
-      collectors.push(
-        getShopifyData(
-          shopifyConfig.storeName,
-          shopifyConfig.clientId,
-          shopifyConfig.clientSecret,
-          businessName
-        ).catch(err => ({ source: "shopify", error: err.message }))
-      );
-    } else if (shopifyConfig.accessToken) {
-      collectors.push(
-        getShopifyData(
-          shopifyConfig.storeName,
-          shopifyConfig.accessToken,
-          null,
-          businessName
-        ).catch(err => ({ source: "shopify", error: err.message }))
-      );
+    const sc = config.shopify[businessKey];
+    if (sc.clientId && sc.clientSecret) {
+      collectors.push(getShopifyData(sc.storeName, sc.clientId, sc.clientSecret, businessName)
+        .catch(err => ({ source: "shopify", error: err.message })));
+    } else if (sc.accessToken) {
+      collectors.push(getShopifyData(sc.storeName, sc.accessToken, null, businessName)
+        .catch(err => ({ source: "shopify", error: err.message })));
     }
   }
 
   // Meta Ads
   if (config.meta?.accessToken && config.meta[`${businessKey}AdAccountId`]) {
-    collectors.push(
-      getMetaData(
-        config.meta.accessToken,
-        config.meta[`${businessKey}AdAccountId`],
-        businessName
-      ).catch(err => ({ source: "meta_ads", error: err.message }))
-    );
+    collectors.push(getMetaData(config.meta.accessToken, config.meta[`${businessKey}AdAccountId`], businessName)
+      .catch(err => ({ source: "meta_ads", error: err.message })));
   }
 
   // Google Ads
   if (config.googleAds?.developerToken && config.googleAds[`${businessKey}CustomerId`]) {
-    collectors.push(
-      getGoogleAdsData(
-        config.googleAds,
-        config.googleAds[`${businessKey}CustomerId`],
-        businessName
-      ).catch(err => ({ source: "google_ads", error: err.message }))
-    );
+    collectors.push(getGoogleAdsData(config.googleAds, config.googleAds[`${businessKey}CustomerId`], businessName)
+      .catch(err => ({ source: "google_ads", error: err.message })));
   }
 
   // GA4
   if (config.analytics?.credentials && config.analytics[`${businessKey}PropertyId`]) {
-    collectors.push(
-      getGA4Data(
-        config.analytics.credentials,
-        config.analytics[`${businessKey}PropertyId`],
-        businessName
-      ).catch(err => ({ source: "ga4", error: err.message }))
-    );
+    collectors.push(getGA4Data(config.analytics.credentials, config.analytics[`${businessKey}PropertyId`], businessName)
+      .catch(err => ({ source: "ga4", error: err.message })));
   }
 
   // Klaviyo (Noody only)
   if (businessKey === "noody" && config.klaviyo?.apiKey) {
-    collectors.push(
-      getKlaviyoData(config.klaviyo.apiKey)
-        .catch(err => ({ source: "klaviyo", error: err.message }))
-    );
+    collectors.push(getKlaviyoData(config.klaviyo.apiKey)
+      .catch(err => ({ source: "klaviyo", error: err.message })));
   }
 
   // Xero
   if (config.xero?.clientId && config.xero[`${businessKey}TenantId`]) {
-    collectors.push(
-      getXeroData(
-        config.xero.clientId,
-        config.xero.clientSecret,
-        config.xero.refreshToken,
-        config.xero[`${businessKey}TenantId`],
-        businessName
-      ).catch(err => ({ source: "xero", error: err.message }))
-    );
+    collectors.push(getXeroData(config.xero.clientId, config.xero.clientSecret, config.xero.refreshToken, config.xero[`${businessKey}TenantId`], businessName)
+      .catch(err => ({ source: "xero", error: err.message })));
   }
 
   // Unleashed (Noody only)
   if (businessKey === "noody" && config.unleashed?.apiId) {
-    collectors.push(
-      getUnleashedData(config.unleashed.apiId, config.unleashed.apiKey)
-        .catch(err => ({ source: "unleashed", error: err.message }))
-    );
+    collectors.push(getUnleashedData(config.unleashed.apiId, config.unleashed.apiKey)
+      .catch(err => ({ source: "unleashed", error: err.message })));
   }
 
-  // Customer Service
-  if (config.customerService?.apiKey) {
-    collectors.push(
-      getCustomerServiceData(config.customerService)
-        .catch(err => ({ source: "customer_service", error: err.message }))
-    );
+  // Social Media
+  if (businessKey === "noody") {
+    const socialConfig = {};
+    if (config.social?.instagram?.noodyAccountId && config.social?.instagram?.accessToken) {
+      socialConfig.instagram = { accountId: config.social.instagram.noodyAccountId, accessToken: config.social.instagram.accessToken };
+    }
+    if (config.social?.facebook?.noodyPageId && config.social?.facebook?.accessToken) {
+      socialConfig.facebook = { pageId: config.social.facebook.noodyPageId, accessToken: config.social.facebook.accessToken };
+    }
+    if (socialConfig.instagram || socialConfig.facebook) {
+      collectors.push(getSocialData(socialConfig, businessName)
+        .catch(err => ({ source: "social", error: err.message })));
+    }
   }
 
-  // Instagram
-  if (config.social?.instagram?.noodyAccountId && config.social?.instagram?.accessToken && businessKey === "noody") {
-    collectors.push(
-      getSocialData(
-        config.social.instagram.noodyAccountId,
-        config.social.instagram.accessToken,
-        businessName
-      ).catch(err => ({ source: "instagram", error: err.message }))
-    );
-  }
-
-  // Run all collectors in parallel
   const results = await Promise.allSettled(collectors);
   const data = results.map(r => r.status === "fulfilled" ? r.value : { error: r.reason?.message });
 
   const successful = data.filter(d => !d.error).length;
   const failed = data.filter(d => d.error).length;
   console.log(`[${businessName}] Collected ${successful} data sources successfully, ${failed} failed`);
-
   if (failed > 0) {
     data.filter(d => d.error).forEach(d => console.warn(`  ⚠️  ${d.source || "unknown"}: ${d.error}`));
   }
@@ -150,67 +114,95 @@ async function collectData(businessKey) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// RUN FULL REPORT FOR ONE BUSINESS
+// RUN FULL REPORT
 // ─────────────────────────────────────────────────────────────
 async function runBusinessReport(businessKey) {
   const businessName = config.businesses[businessKey]?.name || businessKey;
-  
-  // Calculate yesterday's date for the data
-  const today = new Date();
-  const yesterday = new Date(today);
+  const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  
-  // Format dates clearly
   const reportDate = yesterday.toLocaleDateString("en-NZ", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
-    timeZone: config.schedule.timezone
-  });
-  
-  const generatedDate = today.toLocaleDateString("en-NZ", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-    timeZone: config.schedule.timezone
+    timeZone: config.schedule.timezone,
   });
 
   try {
-    // Step 1: Collect all data in parallel
     const data = await collectData(businessKey);
 
-    // Step 2: AI Analysis
+    // AI Analysis
     console.log(`[${businessName}] Running AI analysis...`);
     const analysis = await analyzeBusinessData(data, config, businessName, reportDate);
 
     if (analysis.error) {
       console.error(`[${businessName}] AI analysis failed:`, analysis.error);
-      return false;
+      // Continue anyway — send department reports even without AI
     }
 
-    // Step 3: Deliver reports
     const deliveries = [];
+    const slackToken = config.slack?.botToken;
 
-    // Slack
-    if (config.slack?.botToken) {
-      const channelId = config.slack.channels[`${businessKey}Daily`] || config.slack.channels.combined;
-      if (channelId) {
-        deliveries.push(
-          sendSlackReport(config.slack.botToken, channelId, analysis, data, businessName, reportDate)
-            .catch(err => console.error(`[Slack/${businessName}] Failed:`, err.message))
-        );
-      }
-    }
+    // Helper to find data sources
+    const findSource = (name) => data.find(d => d.source === name && !d.error);
 
-    // Combined channel
-    if (config.slack?.channels?.combined && config.slack.channels.combined !== config.slack.channels[`${businessKey}Daily`]) {
+    // ── 1. DAILY SUMMARY → main channel ──────────────────────
+    const dailyChannel = config.slack?.channels?.[`${businessKey}Daily`] || config.slack?.channels?.combined;
+    if (slackToken && dailyChannel && !analysis.error) {
       deliveries.push(
-        sendSlackReport(config.slack.botToken, config.slack.channels.combined, analysis, data, businessName, reportDate)
-          .catch(err => console.error(`[Slack/Combined] Failed:`, err.message))
+        sendSlackReport(slackToken, dailyChannel, analysis, data, businessName, reportDate)
+          .catch(err => console.error(`[Slack/Daily] Failed:`, err.message))
       );
     }
 
-    // Email
-    if (config.email?.apiKey && config.email.recipients?.length > 0) {
+    // ── 2. ECOMMERCE → #noody-ecommerce ─────────────────────
+    const shopifyData = findSource("shopify");
+    if (slackToken && config.slack?.channels?.ecommerce && shopifyData) {
+      deliveries.push(
+        sendEcommerceReport(slackToken, config.slack.channels.ecommerce, shopifyData, businessName, reportDate)
+          .catch(err => console.error(`[Slack/Ecommerce] Failed:`, err.message))
+      );
+    }
+
+    // ── 3. PPC → #noody-ppc ─────────────────────────────────
+    const metaData = findSource("meta_ads");
+    const googleAdsData = findSource("google_ads");
+    if (slackToken && config.slack?.channels?.ppc && (metaData || googleAdsData)) {
+      deliveries.push(
+        sendPPCReport(slackToken, config.slack.channels.ppc, metaData, googleAdsData, businessName, reportDate)
+          .catch(err => console.error(`[Slack/PPC] Failed:`, err.message))
+      );
+    }
+
+    // ── 4. MARKETING → #noody-marketing ─────────────────────
+    const klaviyoData = findSource("klaviyo");
+    if (slackToken && config.slack?.channels?.marketing && klaviyoData) {
+      deliveries.push(
+        sendMarketingReport(slackToken, config.slack.channels.marketing, klaviyoData, businessName, reportDate)
+          .catch(err => console.error(`[Slack/Marketing] Failed:`, err.message))
+      );
+    }
+
+    // ── 5. SOCIAL → #noody-social ───────────────────────────
+    const socialData = data.find(d => d.source === "social" && !d.error) || data.find(d => d.source === "instagram" && !d.error);
+    if (slackToken && config.slack?.channels?.social && socialData) {
+      deliveries.push(
+        sendSocialReport(slackToken, config.slack.channels.social, socialData, businessName, reportDate)
+          .catch(err => console.error(`[Slack/Social] Failed:`, err.message))
+      );
+    }
+
+    // ── 6. FINANCE → #noody-finance ─────────────────────────
+    const xeroData = findSource("xero");
+    if (slackToken && config.slack?.channels?.finance && xeroData) {
+      deliveries.push(
+        sendFinanceReport(slackToken, config.slack.channels.finance, xeroData, businessName, reportDate)
+          .catch(err => console.error(`[Slack/Finance] Failed:`, err.message))
+      );
+    }
+
+    // ── 7. EMAIL ────────────────────────────────────────────
+    if (config.email?.apiKey && config.email.recipients?.length > 0 && !analysis.error) {
       deliveries.push(
         sendEmailReport(config.email, analysis, data, businessName, reportDate)
-          .catch(err => console.error(`[Email/${businessName}] Failed:`, err.message))
+          .catch(err => console.error(`[Email] Failed:`, err.message))
       );
     }
 
@@ -224,8 +216,6 @@ async function runBusinessReport(businessKey) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// RUN ALL BUSINESSES
 // ─────────────────────────────────────────────────────────────
 async function runAllReports() {
   console.log(`\n${"=".repeat(60)}`);
@@ -241,24 +231,14 @@ async function runAllReports() {
   console.log(`\n📊 Reports complete: ${passed}/${results.length} successful\n`);
 }
 
-// ─────────────────────────────────────────────────────────────
-// ENTRY POINT
-// ─────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
-
 if (args.includes("--schedule")) {
-  // Run on schedule (7am Auckland time daily)
-  console.log(`⏰ Scheduled mode: running at ${config.schedule.dailyReport} (${config.schedule.timezone})`);
+  console.log(`⏰ Scheduled mode: ${config.schedule.dailyReport} (${config.schedule.timezone})`);
   cron.schedule(config.schedule.dailyReport, runAllReports, { timezone: config.schedule.timezone });
-  // Also run immediately on start
   runAllReports();
 } else if (args.includes("--business")) {
-  // Run for specific business: node index.js --business noody
   const businessKey = args[args.indexOf("--business") + 1];
-  runBusinessReport(businessKey).then(() => process.exit(0));
+  runBusinessReport(businessKey).then(() => process.exit(0)).catch(() => process.exit(1));
 } else {
-  // Run once immediately
-  runAllReports().then(() => {
-    if (!args.includes("--keep-alive")) process.exit(0);
-  });
+  runAllReports().then(() => { if (!args.includes("--keep-alive")) process.exit(0); }).catch(() => process.exit(1));
 }

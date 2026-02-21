@@ -1,21 +1,16 @@
-// Updated: Feb 19, 2026 - Fixed paid orders filter
 // connectors/shopify.js
-// Pulls yesterday's orders, revenue, refunds, top products
-// Updated for 2026: Uses OAuth client credentials grant flow
+// COMPLETE REWRITE - Feb 22, 2026
+// Fixed: NZ timezone, paid orders only, returning customer rate, gross vs net, benchmarking
+// Uses OAuth client credentials grant flow
 
 const axios = require("axios");
 
-// Get access token using client credentials (new 2026 method)
 async function getAccessToken(storeName, clientId, clientSecret) {
   try {
     const response = await axios.post(
       `https://${storeName}.myshopify.com/admin/oauth/access_token`,
       `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&grant_type=client_credentials`,
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      }
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
     return response.data.access_token;
   } catch (err) {
@@ -25,171 +20,188 @@ async function getAccessToken(storeName, clientId, clientSecret) {
 }
 
 async function getShopifyData(storeName, clientIdOrToken, clientSecret, businessName) {
-  // Support both old (direct token) and new (client credentials) methods
   let accessToken;
   if (clientSecret) {
-    // New method: exchange client credentials for access token
     accessToken = await getAccessToken(storeName, clientIdOrToken, clientSecret);
   } else {
-    // Old method: direct access token (for backward compatibility)
     accessToken = clientIdOrToken;
   }
 
   const base = `https://${storeName}.myshopify.com/admin/api/2024-01`;
   const headers = { "X-Shopify-Access-Token": accessToken };
 
-  // CRITICAL: Use NZ timezone, not server timezone
-  // Server runs in UTC, but we need NZ business day alignment
+  // NZ TIME
   const nzTimeString = new Date().toLocaleString("en-US", { timeZone: "Pacific/Auckland" });
-  const todayNZ = new Date(nzTimeString);
-  
+  const nowNZ = new Date(nzTimeString);
+  const todayNZ = new Date(nowNZ.getFullYear(), nowNZ.getMonth(), nowNZ.getDate());
+
   const yesterdayNZ = new Date(todayNZ);
   yesterdayNZ.setDate(yesterdayNZ.getDate() - 1);
-  yesterdayNZ.setHours(0, 0, 0, 0);
-  
   const endOfYesterdayNZ = new Date(yesterdayNZ);
   endOfYesterdayNZ.setHours(23, 59, 59, 999);
 
   const dayBeforeNZ = new Date(yesterdayNZ);
   dayBeforeNZ.setDate(dayBeforeNZ.getDate() - 1);
+  const endOfDayBeforeNZ = new Date(dayBeforeNZ);
+  endOfDayBeforeNZ.setHours(23, 59, 59, 999);
 
   const weekAgoNZ = new Date(todayNZ);
   weekAgoNZ.setDate(weekAgoNZ.getDate() - 7);
-
+  const twoWeeksAgoNZ = new Date(todayNZ);
+  twoWeeksAgoNZ.setDate(twoWeeksAgoNZ.getDate() - 14);
   const monthStartNZ = new Date(todayNZ.getFullYear(), todayNZ.getMonth(), 1);
+  const lastMonthStartNZ = new Date(todayNZ.getFullYear(), todayNZ.getMonth() - 1, 1);
+  const lastMonthEndNZ = new Date(todayNZ.getFullYear(), todayNZ.getMonth(), 0, 23, 59, 59, 999);
 
   const fmt = (d) => d.toISOString();
-
   console.log(`[Shopify/${businessName}] Querying for NZ date: ${yesterdayNZ.toDateString()}`);
 
   try {
-    // ── Yesterday's Orders (NZ timezone) ──────────────────────────────────
-    const [ordersRes, refundsRes, mtdRes, wow7Res] = await Promise.all([
-      axios.get(`${base}/orders.json`, {
-        headers,
-        params: {
-          status: "any",
-          created_at_min: fmt(yesterdayNZ),
-          created_at_max: fmt(endOfYesterdayNZ),
-          limit: 250,
-          fields: "id,total_price,subtotal_price,financial_status,line_items,customer,source_name,created_at,tags"
-        }
-      }),
-      axios.get(`${base}/orders.json`, {
-        headers,
-        params: {
-          status: "any",
-          financial_status: "refunded,partially_refunded",
-          created_at_min: fmt(yesterdayNZ),
-          created_at_max: fmt(endOfYesterdayNZ),
-          limit: 250,
-          fields: "id,total_price,refunds"
-        }
-      }),
-      axios.get(`${base}/orders.json`, {
-        headers,
-        params: {
-          status: "any",
-          created_at_min: fmt(monthStartNZ),
-          created_at_max: fmt(todayNZ),
-          limit: 250,
-          fields: "id,total_price,financial_status,created_at"
-        }
-      }),
-      axios.get(`${base}/orders.json`, {
-        headers,
-        params: {
-          status: "any",
-          created_at_min: fmt(weekAgoNZ),
-          created_at_max: fmt(todayNZ),
-          limit: 250,
-          fields: "id,total_price,created_at,customer"
-        }
-      }),
+    const orderFields = "id,total_price,subtotal_price,total_discounts,total_tax,financial_status,line_items,customer,source_name,created_at,tags,discount_codes,refunds";
+    const summaryFields = "id,total_price,financial_status,customer,created_at";
+
+    const [yesterdayRes, dayBeforeRes, mtdRes, lastWeekRes, prevWeekRes, lastMonthRes] = await Promise.all([
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(yesterdayNZ), created_at_max: fmt(endOfYesterdayNZ), limit: 250, fields: orderFields } }),
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(dayBeforeNZ), created_at_max: fmt(endOfDayBeforeNZ), limit: 250, fields: summaryFields } }),
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(monthStartNZ), created_at_max: fmt(todayNZ), limit: 250, fields: orderFields } }),
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(weekAgoNZ), created_at_max: fmt(todayNZ), limit: 250, fields: summaryFields } }),
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(twoWeeksAgoNZ), created_at_max: fmt(weekAgoNZ), limit: 250, fields: summaryFields } }),
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(lastMonthStartNZ), created_at_max: fmt(lastMonthEndNZ), limit: 250, fields: summaryFields } }),
     ]);
 
-    const orders = ordersRes.data.orders || [];
-    const mtdOrders = mtdRes.data.orders || [];
-    const weekOrders = wow7Res.data.orders || [];
+    // Filter paid orders
+    const filterPaid = (orders) => (orders || []).filter(o => o.financial_status === "paid" || o.financial_status === "partially_paid");
+    const paidYesterday = filterPaid(yesterdayRes.data.orders);
+    const paidDayBefore = filterPaid(dayBeforeRes.data.orders);
+    const paidMtd = filterPaid(mtdRes.data.orders);
+    const paidLastWeek = filterPaid(lastWeekRes.data.orders);
+    const paidPrevWeek = filterPaid(prevWeekRes.data.orders);
+    const paidLastMonth = filterPaid(lastMonthRes.data.orders);
 
-    // CRITICAL FIX: Filter to only PAID orders (exclude drafts, cancelled, refunded)
-    const paidOrders = orders.filter(o => 
-      o.financial_status === 'paid' || o.financial_status === 'partially_paid'
-    );
-    const paidMtdOrders = mtdOrders.filter(o => 
-      o.financial_status === 'paid' || o.financial_status === 'partially_paid'
-    );
+    console.log(`[Shopify/${businessName}] Yesterday: ${(yesterdayRes.data.orders||[]).length} total, ${paidYesterday.length} paid`);
 
-    console.log(`[Shopify/${businessName}] Total orders: ${orders.length}, Paid orders: ${paidOrders.length}`);
+    // Revenue helpers
+    const calcRev = (orders) => orders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    const calcGross = (orders) => orders.reduce((s, o) => s + parseFloat(o.subtotal_price || 0), 0);
+    const calcAOV = (orders) => orders.length > 0 ? calcRev(orders) / orders.length : 0;
 
-    // ── Revenue Calculations (ONLY PAID ORDERS) ────────────────────────────────
-    const revenue = paidOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
-    const mtdRevenue = paidMtdOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
-    const refundAmount = (refundsRes.data.orders || []).reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    const yRevenue = calcRev(paidYesterday);
+    const yGross = calcGross(paidYesterday);
+    const dbRevenue = calcRev(paidDayBefore);
+    const mtdRevenue = calcRev(paidMtd);
+    const lwRevenue = calcRev(paidLastWeek);
+    const pwRevenue = calcRev(paidPrevWeek);
+    const lmRevenue = calcRev(paidLastMonth);
 
-    // ── New vs Returning Customers (ONLY PAID ORDERS) ──────────────────────────
-    const customerIds = paidOrders.map(o => o.customer?.id).filter(Boolean);
-    const uniqueCustomers = new Set(customerIds).size;
-    const newCustomers = paidOrders.filter(o => o.customer?.orders_count === 1).length;
+    // Targets
+    const daysInMonth = new Date(todayNZ.getFullYear(), todayNZ.getMonth() + 1, 0).getDate();
+    const dailyTarget = 83000 / daysInMonth;
+    const mtdTarget = dailyTarget * Math.max(todayNZ.getDate() - 1, 1);
 
-    // ── Top Products (ONLY PAID ORDERS) ────────────────────────────────────────
-    const productSales = {};
-    paidOrders.forEach(order => {
-      (order.line_items || []).forEach(item => {
-        const key = item.title;
-        if (!productSales[key]) productSales[key] = { qty: 0, revenue: 0 };
-        productSales[key].qty += item.quantity;
-        productSales[key].revenue += parseFloat(item.price) * item.quantity;
+    // Customer metrics
+    const customerStats = (orders) => {
+      const newC = orders.filter(o => o.customer?.orders_count === 1).length;
+      const retC = orders.filter(o => (o.customer?.orders_count || 0) > 1).length;
+      const total = newC + retC;
+      return { new: newC, returning: retC, returningRate: total > 0 ? Math.round((retC / total) * 100) : 0 };
+    };
+
+    const yCust = customerStats(paidYesterday);
+    const mtdCust = customerStats(paidMtd);
+
+    // Discounts
+    const totalDiscounts = paidYesterday.reduce((s, o) => s + parseFloat(o.total_discounts || 0), 0);
+
+    // Top products (yesterday)
+    const prodSales = {};
+    paidYesterday.forEach(o => {
+      (o.line_items || []).forEach(item => {
+        const k = item.title;
+        if (!prodSales[k]) prodSales[k] = { qty: 0, revenue: 0 };
+        prodSales[k].qty += item.quantity;
+        prodSales[k].revenue += parseFloat(item.price) * item.quantity;
       });
     });
+    const topProducts = Object.entries(prodSales).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5)
+      .map(([name, d]) => ({ name, qty: d.qty, revenue: Math.round(d.revenue * 100) / 100 }));
 
-    const topProducts = Object.entries(productSales)
-      .sort((a, b) => b[1].revenue - a[1].revenue)
-      .slice(0, 5)
-      .map(([name, data]) => ({ name, ...data }));
-
-    // ── Traffic Source Breakdown (ONLY PAID ORDERS) ────────────────────────────
-    const sourceBreakdown = {};
-    paidOrders.forEach(o => {
-      const src = o.source_name || "unknown";
-      sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1;
+    // MTD top products
+    const mtdProdSales = {};
+    paidMtd.forEach(o => {
+      (o.line_items || []).forEach(item => {
+        const k = item.title;
+        if (!mtdProdSales[k]) mtdProdSales[k] = { qty: 0, revenue: 0 };
+        mtdProdSales[k].qty += item.quantity;
+        mtdProdSales[k].revenue += parseFloat(item.price) * item.quantity;
+      });
     });
+    const mtdTopProducts = Object.entries(mtdProdSales).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5)
+      .map(([name, d]) => ({ name, qty: d.qty, revenue: Math.round(d.revenue * 100) / 100 }));
 
-    // ── Average Order Value (ONLY PAID ORDERS) ─────────────────────────────────
-    const aov = paidOrders.length > 0 ? revenue / paidOrders.length : 0;
-    const mtdAov = paidMtdOrders.length > 0 ? mtdRevenue / paidMtdOrders.length : 0;
+    // Source breakdown
+    const sourceBreakdown = {};
+    paidYesterday.forEach(o => { const s = o.source_name || "unknown"; sourceBreakdown[s] = (sourceBreakdown[s] || 0) + 1; });
 
-    // ── Week-over-week comparison (last 7 days vs prior 7) ──
-    const last7Rev = weekOrders
-      .filter(o => new Date(o.created_at) >= weekAgoNZ)
-      .reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    // Scoring
+    let revenueScore = "red";
+    if (yRevenue >= dailyTarget) revenueScore = "green";
+    else if (yRevenue >= dailyTarget * 0.7) revenueScore = "yellow";
+
+    const dodChange = dbRevenue > 0 ? Math.round(((yRevenue - dbRevenue) / dbRevenue) * 100) : 0;
+    const wowChange = pwRevenue > 0 ? Math.round(((lwRevenue - pwRevenue) / pwRevenue) * 100) : 0;
+    const mtdPace = mtdTarget > 0 ? Math.round((mtdRevenue / mtdTarget) * 100) : 0;
+    const projectedMonthly = Math.round(((mtdRevenue / Math.max(todayNZ.getDate() - 1, 1)) * daysInMonth) * 100) / 100;
+
+    console.log(`[Shopify/${businessName}] Revenue: $${yRevenue.toFixed(2)} (target: $${dailyTarget.toFixed(2)}) | Score: ${revenueScore}`);
+    console.log(`[Shopify/${businessName}] MTD: $${mtdRevenue.toFixed(2)} / $${mtdTarget.toFixed(2)} (${mtdPace}%) | Projected: $${projectedMonthly}`);
+    console.log(`[Shopify/${businessName}] Returning rate: ${yCust.returningRate}% | AOV: $${calcAOV(paidYesterday).toFixed(2)}`);
 
     return {
       business: businessName,
       source: "shopify",
       date: yesterdayNZ.toDateString(),
+      currency: "NZD",
       daily: {
-        orders: paidOrders.length,
-        revenue: Math.round(revenue * 100) / 100,
-        aov: Math.round(aov * 100) / 100,
-        refunds: Math.round(refundAmount * 100) / 100,
-        newCustomers,
-        uniqueCustomers,
+        orders: paidYesterday.length,
+        revenue: Math.round(yRevenue * 100) / 100,
+        grossSales: Math.round(yGross * 100) / 100,
+        aov: Math.round(calcAOV(paidYesterday) * 100) / 100,
+        discounts: Math.round(totalDiscounts * 100) / 100,
+        newCustomers: yCust.new,
+        returningCustomers: yCust.returning,
+        returningCustomerRate: yCust.returningRate,
         sourceBreakdown,
         topProducts,
       },
-      mtd: {
-        orders: paidMtdOrders.length,
-        revenue: Math.round(mtdRevenue * 100) / 100,
-        aov: Math.round(mtdAov * 100) / 100,
-        daysElapsed: todayNZ.getDate() - 1,
+      comparison: {
+        dayBefore: { revenue: Math.round(dbRevenue * 100) / 100, orders: paidDayBefore.length, changePercent: dodChange },
+        lastWeek: { revenue: Math.round(lwRevenue * 100) / 100, orders: paidLastWeek.length, aov: Math.round(calcAOV(paidLastWeek) * 100) / 100 },
+        prevWeek: { revenue: Math.round(pwRevenue * 100) / 100, orders: paidPrevWeek.length, wowChangePercent: wowChange },
+        lastMonth: { revenue: Math.round(lmRevenue * 100) / 100, orders: paidLastMonth.length, aov: Math.round(calcAOV(paidLastMonth) * 100) / 100, dailyAvg: Math.round((lmRevenue / daysInMonth) * 100) / 100 },
       },
-      weekly: {
-        orders: weekOrders.length,
-        revenue: Math.round(last7Rev * 100) / 100,
-      }
+      mtd: {
+        orders: paidMtd.length,
+        revenue: Math.round(mtdRevenue * 100) / 100,
+        aov: Math.round(calcAOV(paidMtd) * 100) / 100,
+        daysElapsed: todayNZ.getDate() - 1,
+        target: Math.round(mtdTarget * 100) / 100,
+        monthlyTarget: 83000,
+        pacePercent: mtdPace,
+        projectedMonthly,
+        newCustomers: mtdCust.new,
+        returningCustomers: mtdCust.returning,
+        returningCustomerRate: mtdCust.returningRate,
+        topProducts: mtdTopProducts,
+      },
+      performance: {
+        revenueScore,
+        dailyTarget: Math.round(dailyTarget * 100) / 100,
+        vsTargetPercent: Math.round(((yRevenue / dailyTarget) * 100) - 100),
+        dodChange,
+        wowChange,
+        mtdPace,
+      },
     };
-
   } catch (err) {
     console.error(`[Shopify/${businessName}] Error:`, err.response?.data || err.message);
     return { business: businessName, source: "shopify", error: err.message };

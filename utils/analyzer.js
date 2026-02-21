@@ -1,89 +1,43 @@
-// utils/analyzer.js
-// Sends all collected data to Claude for intelligent analysis and action items
-
+// utils/analyzer.js - ROBUST JSON PARSING
 const Anthropic = require("@anthropic-ai/sdk");
 
 async function analyzeBusinessData(allData, config, businessName, reportDate) {
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+  const dataDate = reportDate || new Date().toLocaleDateString("en-NZ", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Pacific/Auckland" });
 
-  // reportDate is the date the data is FOR (yesterday)
-  // This is passed in to avoid confusion with "today"
-  const dataDate = reportDate || new Date().toLocaleDateString("en-NZ", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-    timeZone: config.businesses.noody?.timezone || "Pacific/Auckland"
-  });
+  const systemPrompt = `You are a senior business analyst for ${businessName}, a DTC skincare brand in NZ (~$83K/month, 30% margins). All currency is NZD. Compare revenue against YTD daily average. Be direct with numbers. Respond ONLY with valid JSON, no markdown fences or text before/after.`;
 
-  const benchmarks = config.benchmarks;
-
-  const systemPrompt = `You are a senior business analyst and performance advisor for ${businessName}. 
-Your job is to analyze daily business data and provide:
-1. A clear, concise performance summary
-2. Key wins and concerns (with specific numbers)
-3. 3-5 prioritized action items for today
-4. Notable trends or anomalies
-
-**CRITICAL: Pay special attention to social media performance** - follower growth, engagement rates, and content performance are key growth indicators.
-
-Be direct, specific, and action-oriented. Use actual numbers from the data. 
-Flag anything that needs urgent attention. 
-Benchmark against industry standards where relevant.
-Keep the tone professional but energetic — this is a team daily briefing.
-
-IMPORTANT: The data you're analyzing is for YESTERDAY (${dataDate}). When writing the summary, refer to it as "yesterday" or state the specific date, NOT as "today" or "Tuesday" if that's incorrect.`;
-
-  const userPrompt = `Analyze yesterday's business data for ${businessName} (${dataDate}):
-
+  const userPrompt = `Analyze yesterday's data (${dataDate}):
 ${JSON.stringify(allData, null, 2)}
 
-Industry benchmarks for context:
-- Meta CTR: poor <0.5%, average 1%, good >2%
-- Meta ROAS: poor <1.5x, average 3x, good >5x
-- Email open rate: poor <15%, average 25%, good >40%
-- Customer response time: poor >24h, good <2h
-- Instagram engagement rate: poor <1%, average 2-3%, good >4%
-- Instagram follower growth: poor <1%/month, good >5%/month
-
-Please provide your analysis in this exact JSON structure:
-{
-  "headline": "One sentence performance headline for today",
-  "overallScore": "green|yellow|red",
-  "summary": "2-3 sentence executive summary",
-  "wins": [
-    { "metric": "metric name", "value": "value", "context": "why this is good" }
-  ],
-  "concerns": [
-    { "metric": "metric name", "value": "value", "context": "why this needs attention", "urgency": "high|medium|low" }
-  ],
-  "actionItems": [
-    { "priority": 1, "action": "specific action", "owner": "who should do this", "timeframe": "today|this week|monitor" }
-  ],
-  "departmentScores": {
-    "revenue": { "score": "green|yellow|red", "note": "brief note" },
-    "marketing": { "score": "green|yellow|red", "note": "brief note" },
-    "email": { "score": "green|yellow|red", "note": "brief note on Klaviyo/email performance" },
-    "social": { "score": "green|yellow|red", "note": "brief note on Instagram/social performance" },
-    "inventory": { "score": "green|yellow|red", "note": "brief note" },
-    "customerService": { "score": "green|yellow|red", "note": "brief note" },
-    "cashflow": { "score": "green|yellow|red", "note": "brief note" }
-  },
-  "trendAlert": "Any significant trend or anomaly worth flagging (null if none)"
-}`;
+Respond with ONLY this JSON:
+{"headline":"one sentence","overallScore":"green|yellow|red","summary":"2-3 sentences with numbers","wins":[{"metric":"name","value":"num","context":"why"}],"concerns":[{"metric":"name","value":"num","context":"why","urgency":"high|medium|low"}],"actionItems":[{"priority":1,"action":"specific","owner":"Scott|Ashleigh|Marketing","timeframe":"today|this week|monitor"}],"departmentScores":{"revenue":{"score":"green|yellow|red","note":"brief"},"marketing":{"score":"green|yellow|red","note":"brief"},"email":{"score":"green|yellow|red","note":"brief"},"social":{"score":"green|yellow|red","note":"brief"},"inventory":{"score":"green|yellow|red","note":"brief"},"customerService":{"score":"green|yellow|red","note":"brief"},"cashflow":{"score":"green|yellow|red","note":"brief"}},"trendAlert":"trend or null"}`;
 
   try {
-    const response = await client.messages.create({
-      model: config.anthropic.model,
-      max_tokens: 2000,
-      messages: [{ role: "user", content: userPrompt }],
-      system: systemPrompt,
-    });
+    const response = await client.messages.create({ model: config.anthropic.model, max_tokens: 2000, messages: [{ role: "user", content: userPrompt }], system: systemPrompt });
+    const rawText = response.content[0]?.text || "{}";
 
-    const text = response.content[0]?.text || "{}";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    // Try direct parse
+    try { return JSON.parse(rawText); } catch (e) { /* continue */ }
+
+    // Try extracting from code fences
+    const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) { try { return JSON.parse(fenceMatch[1].trim()); } catch (e) { /* continue */ } }
+
+    // Find outermost braces
+    let depth = 0, start = -1, end = -1;
+    for (let i = 0; i < rawText.length; i++) {
+      if (rawText[i] === "{") { if (depth === 0) start = i; depth++; }
+      else if (rawText[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
     }
-    return { error: "Could not parse AI analysis", raw: text };
-
+    if (start >= 0 && end > start) {
+      let candidate = rawText.substring(start, end + 1).replace(/[\x00-\x1F\x7F]/g, " ").replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+      try { return JSON.parse(candidate); } catch (e) {
+        console.error("[Analyzer] JSON parse failed, raw (first 500):", rawText.substring(0, 500));
+        return { error: "JSON parse failed", raw: rawText.substring(0, 500) };
+      }
+    }
+    return { error: "No JSON found in AI response" };
   } catch (err) {
     console.error("[Analyzer] Error:", err.message);
     return { error: err.message };

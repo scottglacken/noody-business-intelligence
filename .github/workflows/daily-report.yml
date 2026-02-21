@@ -1,17 +1,12 @@
 name: Daily Business Intelligence Report
 
 on:
-  # Run at 7:00 PM UTC = 7:00 AM NZST (UTC+12 standard) or 8:00 AM NZDT (UTC+13 summer)
-  # Adjust based on season: summer = 18:00 UTC, winter = 19:00 UTC
   schedule:
-    - cron: '0 19 * * *'   # 7am NZT (winter / NZST)
-    # - cron: '0 18 * * *'  # 7am NZDT (summer - uncomment Dec-Mar)
-  
-  # Also allow manual trigger from GitHub UI
+    - cron: '0 18 * * *'   # 7am NZDT (summer Oct-Mar)
   workflow_dispatch:
     inputs:
       business:
-        description: 'Which business to report on (leave blank for both)'
+        description: 'Which business (leave blank for both)'
         required: false
         default: 'noody'
 
@@ -19,24 +14,16 @@ jobs:
   daily-report:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Create Google credentials file
+      - run: npm install
+      - name: Create Google credentials
         run: |
           mkdir -p credentials
           echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > credentials/google-sa.json
-
       - name: Run daily report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -44,37 +31,34 @@ jobs:
           SHOPIFY_NOODY_TOKEN: ${{ secrets.SHOPIFY_NOODY_TOKEN }}
           SHOPIFY_NOODY_CLIENT_ID: ${{ secrets.SHOPIFY_NOODY_CLIENT_ID }}
           SHOPIFY_NOODY_CLIENT_SECRET: ${{ secrets.SHOPIFY_NOODY_CLIENT_SECRET }}
-          SHOPIFY_FACIALIST_STORE: ${{ secrets.SHOPIFY_FACIALIST_STORE }}
-          SHOPIFY_FACIALIST_TOKEN: ${{ secrets.SHOPIFY_FACIALIST_TOKEN }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           META_NOODY_AD_ACCOUNT: ${{ secrets.META_NOODY_AD_ACCOUNT }}
-          META_FACIALIST_AD_ACCOUNT: ${{ secrets.META_FACIALIST_AD_ACCOUNT }}
+          IG_NOODY_ACCOUNT_ID: ${{ secrets.IG_NOODY_ACCOUNT_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          FB_NOODY_PAGE_ID: ${{ secrets.FB_NOODY_PAGE_ID }}
+          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
           GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
           GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
           GOOGLE_ADS_NOODY_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_NOODY_CUSTOMER_ID }}
-          GOOGLE_ADS_FACIALIST_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_FACIALIST_CUSTOMER_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: ./credentials/google-sa.json
           GA4_NOODY_PROPERTY_ID: ${{ secrets.GA4_NOODY_PROPERTY_ID }}
-          GA4_FACIALIST_PROPERTY_ID: ${{ secrets.GA4_FACIALIST_PROPERTY_ID }}
           KLAVIYO_API_KEY: ${{ secrets.KLAVIYO_API_KEY }}
           XERO_CLIENT_ID: ${{ secrets.XERO_CLIENT_ID }}
           XERO_CLIENT_SECRET: ${{ secrets.XERO_CLIENT_SECRET }}
           XERO_REFRESH_TOKEN: ${{ secrets.XERO_REFRESH_TOKEN }}
           XERO_NOODY_TENANT_ID: ${{ secrets.XERO_NOODY_TENANT_ID }}
-          XERO_FACIALIST_TENANT_ID: ${{ secrets.XERO_FACIALIST_TENANT_ID }}
           UNLEASHED_API_ID: ${{ secrets.UNLEASHED_API_ID }}
           UNLEASHED_API_KEY: ${{ secrets.UNLEASHED_API_KEY }}
-          CS_API_KEY: ${{ secrets.CS_API_KEY }}
-          CS_API_SECRET: ${{ secrets.CS_API_SECRET }}
-          CS_DOMAIN: ${{ secrets.CS_DOMAIN }}
-          IG_NOODY_ACCOUNT_ID: ${{ secrets.IG_NOODY_ACCOUNT_ID }}
-          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_NOODY_CHANNEL: ${{ secrets.SLACK_NOODY_CHANNEL }}
-          SLACK_FACIALIST_CHANNEL: ${{ secrets.SLACK_FACIALIST_CHANNEL }}
           SLACK_COMBINED_CHANNEL: ${{ secrets.SLACK_COMBINED_CHANNEL }}
+          SLACK_ECOMMERCE_CHANNEL: ${{ secrets.SLACK_ECOMMERCE_CHANNEL }}
+          SLACK_PPC_CHANNEL: ${{ secrets.SLACK_PPC_CHANNEL }}
+          SLACK_MARKETING_CHANNEL: ${{ secrets.SLACK_MARKETING_CHANNEL }}
+          SLACK_SOCIAL_CHANNEL: ${{ secrets.SLACK_SOCIAL_CHANNEL }}
+          SLACK_FINANCE_CHANNEL: ${{ secrets.SLACK_FINANCE_CHANNEL }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
@@ -86,12 +70,11 @@ jobs:
           else
             npm start
           fi
-
       - name: Notify on failure
         if: failure()
         uses: slackapi/slack-github-action@v1.26.0
         with:
           channel-id: ${{ secrets.SLACK_COMBINED_CHANNEL }}
-          slack-message: "🚨 Daily report failed! Check GitHub Actions: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          slack-message: "🚨 Daily report failed! Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

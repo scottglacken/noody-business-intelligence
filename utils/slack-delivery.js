@@ -46,7 +46,6 @@ function buildSlackBlocks(analysis, data, businessName, date) {
     text: { type: "mrkdwn", text: "*📊 Department Scorecard*" }
   });
 
-  // Split into groups of 2 for two-column layout
   for (let i = 0; i < deptFields.length; i += 2) {
     blocks.push({
       type: "section",
@@ -63,35 +62,41 @@ function buildSlackBlocks(analysis, data, businessName, date) {
   const ga4 = data.find(d => d.source === "ga4");
   const cs = data.find(d => d.source === "customer_service");
   const inventory = data.find(d => d.source === "unleashed");
+  
+  // Social: support both new combined format and legacy direct format
+  const socialData = data.find(d => d.source === "social") || data.find(d => d.source === "instagram");
 
   if (shopify && !shopify.error) {
+    const vsAvg = shopify.benchmarks?.vsYtdDailyAvg || 0;
+    const revenueEmoji = vsAvg >= 10 ? "🟢" : vsAvg >= -10 ? "🟡" : "🔴";
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "*💰 Revenue & Orders (Yesterday)*" },
+      text: { type: "mrkdwn", text: `*💰 Revenue & Orders (Yesterday)* ${revenueEmoji} ${vsAvg > 0 ? "+" : ""}${vsAvg}% vs YTD avg` },
       fields: [
-        { type: "mrkdwn", text: `*Revenue*\n${formatCurrency(shopify.daily?.revenue)}` },
+        { type: "mrkdwn", text: `*Total Sales*\n${formatCurrency(shopify.daily?.totalSales || shopify.daily?.revenue)}` },
         { type: "mrkdwn", text: `*Orders*\n${shopify.daily?.orders || 0}` },
         { type: "mrkdwn", text: `*AOV*\n${formatCurrency(shopify.daily?.aov)}` },
-        { type: "mrkdwn", text: `*New Customers*\n${shopify.daily?.newCustomers || 0}` },
+        { type: "mrkdwn", text: `*Returning Rate*\n${shopify.daily?.returningCustomerRate || 0}%` },
         { type: "mrkdwn", text: `*MTD Revenue*\n${formatCurrency(shopify.mtd?.revenue)}` },
-        { type: "mrkdwn", text: `*Refunds*\n${formatCurrency(shopify.daily?.refunds)}` },
+        { type: "mrkdwn", text: `*New Customers*\n${shopify.daily?.newCustomers || 0}` },
       ]
     });
   }
 
   if (meta && !meta.error) {
-    const ctrStatus = meta.daily?.ctr >= 1.0 ? "🟢" : meta.daily?.ctr >= 0.5 ? "🟡" : "🔴";
-    const roasStatus = meta.daily?.roas >= 3.0 ? "🟢" : meta.daily?.roas >= 1.5 ? "🟡" : "🔴";
+    const md = meta.daily || {};
+    const ctrStatus = md.ctr >= 1.0 ? "🟢" : md.ctr >= 0.5 ? "🟡" : "🔴";
+    const roasStatus = md.roas >= 3.0 ? "🟢" : md.roas >= 1.5 ? "🟡" : "🔴";
     blocks.push({
       type: "section",
       text: { type: "mrkdwn", text: "*📣 Meta Ads (Yesterday)*" },
       fields: [
-        { type: "mrkdwn", text: `*Spend*\n${formatCurrency(meta.daily?.spend)}` },
-        { type: "mrkdwn", text: `${roasStatus} *ROAS*\n${meta.daily?.roas}x` },
-        { type: "mrkdwn", text: `${ctrStatus} *CTR*\n${formatPercent(meta.daily?.ctr)}` },
-        { type: "mrkdwn", text: `*CPC*\n${formatCurrency(meta.daily?.cpc)}` },
-        { type: "mrkdwn", text: `*Purchases*\n${meta.daily?.purchases || 0}` },
-        { type: "mrkdwn", text: `*Revenue via Meta*\n${formatCurrency(meta.daily?.purchaseValue)}` },
+        { type: "mrkdwn", text: `*Spend*\n${formatCurrency(md.spend)}` },
+        { type: "mrkdwn", text: `${roasStatus} *ROAS*\n${md.roas}x` },
+        { type: "mrkdwn", text: `${ctrStatus} *CTR*\n${formatPercent(md.ctr)}` },
+        { type: "mrkdwn", text: `*CPC*\n${formatCurrency(md.cpc)}` },
+        { type: "mrkdwn", text: `*Purchases*\n${md.purchases || 0}` },
+        { type: "mrkdwn", text: `*Revenue via Meta*\n${formatCurrency(md.purchaseValue)}` },
       ]
     });
   }
@@ -110,7 +115,6 @@ function buildSlackBlocks(analysis, data, businessName, date) {
       ]
     });
     
-    // Show yesterday's campaigns if any
     if (klaviyo.daily?.campaignNames?.length > 0) {
       blocks.push({
         type: "section",
@@ -118,7 +122,6 @@ function buildSlackBlocks(analysis, data, businessName, date) {
       });
     }
     
-    // Show last 7 days campaigns
     if (klaviyo.last7Days?.campaignNames?.length > 0 && klaviyo.last7Days.campaignsSent > 0) {
       const recent = klaviyo.last7Days.campaignNames.slice(0, 3).join(", ");
       blocks.push({
@@ -127,7 +130,6 @@ function buildSlackBlocks(analysis, data, businessName, date) {
       });
     }
     
-    // Show active flows - this is important!
     if (klaviyo.flows?.flowNames?.length > 0) {
       const flowList = klaviyo.flows.flowNames.join(", ");
       blocks.push({
@@ -135,7 +137,6 @@ function buildSlackBlocks(analysis, data, businessName, date) {
         text: { type: "mrkdwn", text: `🔄 *Active Flows (${klaviyo.flows.active}):* ${flowList}` }
       });
     } else if (klaviyo.flows?.total > 0) {
-      // Show all flow statuses for debugging
       const statusInfo = klaviyo.flows.allFlowStatuses?.slice(0, 3).map(f => 
         `${f.name} (${f.status}${f.archived ? ', archived' : ''})`
       ).join(", ");
@@ -144,6 +145,14 @@ function buildSlackBlocks(analysis, data, businessName, date) {
         text: { type: "mrkdwn", text: `⚠️ *${klaviyo.flows.total} flows exist but 0 detected as active*\nStatuses: ${statusInfo || 'Check Klaviyo dashboard'}` }
       });
     }
+  }
+
+  // ── Social Media Summary (condensed) ─────────────────────
+  // Full details go to the dedicated #social channel
+  const { buildSocialSummary } = require("./social-report");
+  const socialSummary = buildSocialSummary(socialData);
+  if (socialSummary) {
+    blocks.push(socialSummary);
   }
 
   if (ga4 && !ga4.error) {
