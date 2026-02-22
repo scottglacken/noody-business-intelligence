@@ -80,10 +80,15 @@ module.exports = {
   },
 
   customerService: {
-    provider: "gorgias",
-    apiKey: process.env.CS_API_KEY,
-    apiSecret: process.env.CS_API_SECRET,
-    domain: process.env.CS_DOMAIN,
+    reamaze: {
+      brand: process.env.REAMAZE_BRAND,         // your-brand.reamaze.io
+      email: process.env.REAMAZE_EMAIL,          // login email
+      apiToken: process.env.REAMAZE_API_TOKEN,   // API token from Settings > Developer
+    },
+    meta: {
+      pageId: process.env.FB_NOODY_PAGE_ID,
+      accessToken: process.env.FB_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN,
+    },
   },
 
   social: {
@@ -122,6 +127,7 @@ module.exports = {
       marketing: process.env.SLACK_MARKETING_CHANNEL,     // Klaviyo email marketing
       social: process.env.SLACK_SOCIAL_CHANNEL,           // Instagram + Facebook
       finance: process.env.SLACK_FINANCE_CHANNEL,         // Xero cashflow
+      cs: process.env.SLACK_CS_CHANNEL,                    // Customer service
     },
   },
 

@@ -18,6 +18,7 @@ const { getKlaviyoData } = require("./connectors/klaviyo");
 const { getXeroData } = require("./connectors/xero");
 const { getUnleashedData } = require("./connectors/unleashed");
 const { getSocialData } = require("./connectors/social-cs");
+const { getCustomerServiceData } = require("./connectors/customer-service");
 
 const { analyzeBusinessData } = require("./utils/analyzer");
 const { sendSlackReport } = require("./utils/slack-delivery");
@@ -27,6 +28,7 @@ const { sendEcommerceReport } = require("./utils/ecommerce-report");
 const { sendPPCReport } = require("./utils/ppc-report");
 const { sendMarketingReport } = require("./utils/marketing-report");
 const { sendFinanceReport } = require("./utils/finance-report");
+const { sendCSReport, sendCSWeeklyReport } = require("./utils/cs-report");
 
 // ─────────────────────────────────────────────────────────────
 // COLLECT ALL DATA
@@ -97,6 +99,12 @@ async function collectData(businessKey) {
     if (socialConfig.instagram || socialConfig.facebook) {
       collectors.push(getSocialData(socialConfig, businessName)
         .catch(err => ({ source: "social", error: err.message })));
+    }
+
+    // Customer Service (Re:amaze + Meta Inbox)
+    if (config.customerService?.reamaze?.brand || config.customerService?.meta?.pageId) {
+      collectors.push(getCustomerServiceData(config.customerService, businessName)
+        .catch(err => ({ source: "customer_service", error: err.message })));
     }
   }
 
@@ -198,7 +206,25 @@ async function runBusinessReport(businessKey) {
       );
     }
 
-    // ── 7. EMAIL ────────────────────────────────────────────
+    // ── 7. CUSTOMER SERVICE → #noody-cs ─────────────────────
+    const csData = findSource("customer_service");
+    if (slackToken && config.slack?.channels?.cs && csData) {
+      // Daily report every day
+      deliveries.push(
+        sendCSReport(slackToken, config.slack.channels.cs, csData, businessName, reportDate)
+          .catch(err => console.error(`[Slack/CS] Failed:`, err.message))
+      );
+      // Weekly report on Mondays
+      const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon
+      if (dayOfWeek === 1) {
+        deliveries.push(
+          sendCSWeeklyReport(slackToken, config.slack.channels.cs, csData, businessName)
+            .catch(err => console.error(`[Slack/CS Weekly] Failed:`, err.message))
+        );
+      }
+    }
+
+    // ── 8. EMAIL ────────────────────────────────────────────
     if (config.email?.apiKey && config.email.recipients?.length > 0 && !analysis.error) {
       deliveries.push(
         sendEmailReport(config.email, analysis, data, businessName, reportDate)
