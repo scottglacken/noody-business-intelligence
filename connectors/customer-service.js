@@ -100,6 +100,54 @@ async function getReamazeData(brand, email, apiToken) {
       lastCustomerMsg: c.last_customer_message?.body?.substring(0, 200),
     }));
 
+    // ── FETCH ACTUAL MESSAGES (7 days) for AI analysis ──
+    console.log("[Re:amaze] Fetching customer messages for AI analysis...");
+    let allCustomerMessages = [];
+    try {
+      const msgsRes = await axios.get(`${base}/messages`, {
+        auth, headers,
+        params: {
+          filter: "customer",
+          start_date: fmt(weekAgo),
+          end_date: fmt(now),
+        }
+      });
+      const msgs = msgsRes.data.messages || [];
+      allCustomerMessages = msgs.map(m => ({
+        body: (m.body || "").replace(/<[^>]*>/g, "").substring(0, 300), // strip HTML, limit length
+        from: m.user?.name || m.user?.email || "Unknown",
+        date: m.created_at,
+        channel: m.conversation?.category?.name || "Unknown",
+        subject: m.conversation?.subject || "",
+      })).filter(m => m.body.trim().length > 10); // skip empty/short
+
+      // Paginate if needed (up to 3 pages)
+      let page = 2;
+      let pageCount = msgsRes.data.page_count || 1;
+      while (page <= Math.min(pageCount, 3)) {
+        try {
+          const nextPage = await axios.get(`${base}/messages`, {
+            auth, headers,
+            params: { filter: "customer", start_date: fmt(weekAgo), end_date: fmt(now), page }
+          });
+          const moreMsgs = (nextPage.data.messages || []).map(m => ({
+            body: (m.body || "").replace(/<[^>]*>/g, "").substring(0, 300),
+            from: m.user?.name || m.user?.email || "Unknown",
+            date: m.created_at,
+            channel: m.conversation?.category?.name || "Unknown",
+            subject: m.conversation?.subject || "",
+          })).filter(m => m.body.trim().length > 10);
+          allCustomerMessages = allCustomerMessages.concat(moreMsgs);
+          pageCount = nextPage.data.page_count || pageCount;
+          page++;
+        } catch (e) { break; }
+      }
+
+      console.log(`[Re:amaze] Fetched ${allCustomerMessages.length} customer messages (7d)`);
+    } catch (e) {
+      console.log(`[Re:amaze] Message fetch error: ${e.response?.data?.error || e.message}`);
+    }
+
     return {
       source: "reamaze",
       daily: {
@@ -128,6 +176,7 @@ async function getReamazeData(brand, email, apiToken) {
         totalRatings: ratings.length,
         distribution: ratingDist,
       },
+      customerMessages: allCustomerMessages,
     };
   } catch (err) {
     console.error("[Re:amaze] Error:", err.response?.data || err.message);
@@ -248,6 +297,7 @@ async function getCustomerServiceData(csConfig, businessName) {
     // For AI analysis
     recentSubjects: reamaze.daily?.recentSubjects || [],
     topIssues: reamaze.weekly?.topIssues || [],
+    customerMessages: reamaze.customerMessages || [],
   };
 
   console.log(`[CS/${businessName}] Complete. Daily: ${combined.daily.totalTickets} tickets, Open: ${combined.open.total}, Weekly: ${combined.weekly.totalTickets}`);

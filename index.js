@@ -211,14 +211,15 @@ async function runBusinessReport(businessKey) {
     if (slackToken && config.slack?.channels?.cs && csData) {
       // Daily report every day
       deliveries.push(
-        sendCSReport(slackToken, config.slack.channels.cs, csData, businessName, reportDate)
+        sendCSReport(slackToken, config.slack.channels.cs, csData, businessName, reportDate, config.anthropic)
           .catch(err => console.error(`[Slack/CS] Failed:`, err.message))
       );
-      // Weekly report on Mondays
-      const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon
-      if (dayOfWeek === 1) {
+      // Weekly report on Mondays (or force with --weekly-cs flag)
+      const dayOfWeek = new Date().getDay();
+      const forceWeekly = process.argv.includes("--weekly-cs");
+      if (dayOfWeek === 1 || forceWeekly) {
         deliveries.push(
-          sendCSWeeklyReport(slackToken, config.slack.channels.cs, csData, businessName)
+          sendCSWeeklyReport(slackToken, config.slack.channels.cs, csData, businessName, config.anthropic)
             .catch(err => console.error(`[Slack/CS Weekly] Failed:`, err.message))
         );
       }
