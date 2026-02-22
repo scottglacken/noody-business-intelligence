@@ -114,20 +114,29 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
     const monthlyBenchmark = dailyBenchmark * daysInMonth;
     const mtdTarget = dailyBenchmark * daysElapsed;
 
-    // Customer metrics
+    // Customer metrics — use email frequency in MTD orders to detect returning customers
+    // (orders_count not reliably returned in order endpoint)
+    const emailCounts = {};
+    (paidMtd || []).forEach(o => {
+      const email = o.customer?.email || o.email || o.contact_email;
+      if (email) emailCounts[email] = (emailCounts[email] || 0) + 1;
+    });
+    
     const customerStats = (orders) => {
-      const newC = orders.filter(o => {
-        const oc = o.customer?.orders_count;
-        return oc === 1 || oc === undefined || oc === null;
-      }).length;
-      const retC = orders.filter(o => (o.customer?.orders_count || 0) > 1).length;
+      let newC = 0, retC = 0;
+      orders.forEach(o => {
+        const email = o.customer?.email || o.email || o.contact_email;
+        if (email && emailCounts[email] > 1) retC++;
+        else newC++;
+      });
       const total = orders.length;
       return { new: newC, returning: retC, returningRate: total > 0 ? Math.round((retC / total) * 100) : 0 };
     };
 
     const yCust = customerStats(paidYesterday);
     const mtdCust = customerStats(paidMtd);
-    console.log(`[Shopify/${businessName}] Customer orders_count values:`, paidYesterday.map(o => o.customer?.orders_count));
+    console.log(`[Shopify/${businessName}] Customer emails (yesterday):`, paidYesterday.map(o => (o.customer?.email || o.email || "none").replace(/(.{3}).*(@.*)/, "$1***$2")));
+    console.log(`[Shopify/${businessName}] MTD unique customers: ${Object.keys(emailCounts).length}, repeat purchasers: ${Object.values(emailCounts).filter(c => c > 1).length}`);
 
     // Discounts
     const totalDiscounts = paidYesterday.reduce((s, o) => s + parseFloat(o.total_discounts || 0), 0);

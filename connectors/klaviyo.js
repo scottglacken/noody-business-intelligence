@@ -111,7 +111,6 @@ async function getKlaviyoData(apiKey) {
               "recipients",
               "delivered",
               "delivery_rate",
-              "bounces",
               "bounce_rate",
               "unsubscribes",
               "unsubscribe_rate",
