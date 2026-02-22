@@ -65,7 +65,34 @@ async function getKlaviyoData(apiKey) {
     console.log(`[Klaviyo] Last 7d: ${last7Campaigns.length} campaigns, Yesterday: ${yesterdayCampaigns.length}`);
 
     // ═══════════════════════════════════════════════════════════
-    // 2. CAMPAIGN PERFORMANCE (Reporting API - open rate, click rate, revenue)
+    // 2. GET METRICS IDs (needed for reporting API calls below)
+    // ═══════════════════════════════════════════════════════════
+    let metricsData = null;
+    let placedOrderMetricId = null;
+
+    try {
+      console.log("[Klaviyo] Fetching metrics list...");
+      const metricsRes = await axios.get(`${base}/metrics`, {
+        headers,
+        params: { "fields[metric]": "name" }
+      });
+      metricsData = metricsRes.data.data || [];
+
+      const placedOrderMetric = metricsData.find(m =>
+        m.attributes?.name === "Placed Order" || m.attributes?.name === "placed_order"
+      );
+      if (placedOrderMetric) {
+        placedOrderMetricId = placedOrderMetric.id;
+        console.log(`[Klaviyo] Found Placed Order metric: ${placedOrderMetricId}`);
+      } else {
+        console.log(`[Klaviyo] Placed Order metric not found. Available: ${metricsData.slice(0, 10).map(m => m.attributes?.name).join(", ")}`);
+      }
+    } catch (err) {
+      console.log(`[Klaviyo] Metrics list error: ${err.response?.data?.errors?.[0]?.detail || err.message}`);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 3. CAMPAIGN PERFORMANCE (Reporting API - open rate, click rate, revenue)
     // ═══════════════════════════════════════════════════════════
     let campaignValues = null;
     try {
@@ -75,12 +102,11 @@ async function getKlaviyoData(apiKey) {
           type: "campaign-values-report",
           attributes: {
             timeframe: { key: "last_30_days" },
+            conversion_metric_id: placedOrderMetricId || undefined,
             statistics: [
               "opens",
-              "unique_opens",
               "open_rate",
               "clicks",
-              "unique_clicks",
               "click_rate",
               "recipients",
               "delivered",
@@ -104,13 +130,15 @@ async function getKlaviyoData(apiKey) {
       console.log(`[Klaviyo] Campaign values returned: ${campaignValues.length} campaigns`);
     } catch (err) {
       console.log(`[Klaviyo] Campaign values error: ${err.response?.data?.errors?.[0]?.detail || err.message}`);
-      // Try simplified version
+      // Wait 2s then try simplified version
+      await new Promise(r => setTimeout(r, 2000));
       try {
         const simpleRes = await axios.post(`${base}/campaign-values-reports/`, {
           data: {
             type: "campaign-values-report",
             attributes: {
               timeframe: { key: "last_30_days" },
+              conversion_metric_id: placedOrderMetricId || undefined,
               statistics: ["open_rate", "click_rate", "recipients", "delivered", "conversion_value", "conversions"],
             }
           }
@@ -151,39 +179,11 @@ async function getKlaviyoData(apiKey) {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // 3. GET METRICS IDs (for Placed Order aggregation)
-    // ═══════════════════════════════════════════════════════════
-    let metricsData = null;
-    let placedOrderMetricId = null;
-    let flowRevenue7d = 0;
-    let campaignRevenue7d = 0;
-
-    try {
-      console.log("[Klaviyo] Fetching metrics list...");
-      const metricsRes = await axios.get(`${base}/metrics`, {
-        headers,
-        params: { "fields[metric]": "name" }
-      });
-      metricsData = metricsRes.data.data || [];
-
-      // Find "Placed Order" metric
-      const placedOrderMetric = metricsData.find(m =>
-        m.attributes?.name === "Placed Order" || m.attributes?.name === "placed_order"
-      );
-      if (placedOrderMetric) {
-        placedOrderMetricId = placedOrderMetric.id;
-        console.log(`[Klaviyo] Found Placed Order metric: ${placedOrderMetricId}`);
-      } else {
-        console.log(`[Klaviyo] Placed Order metric not found. Available: ${metricsData.slice(0, 10).map(m => m.attributes?.name).join(", ")}`);
-      }
-    } catch (err) {
-      console.log(`[Klaviyo] Metrics list error: ${err.response?.data?.errors?.[0]?.detail || err.message}`);
-    }
-
-    // ═══════════════════════════════════════════════════════════
     // 4. REVENUE ATTRIBUTION (Metric Aggregates)
     //    Get flow revenue and campaign revenue for last 7 days
     // ═══════════════════════════════════════════════════════════
+    let flowRevenue7d = 0;
+    let campaignRevenue7d = 0;
     if (placedOrderMetricId) {
       const last7Iso = last7.toISOString().split(".")[0];
       const todayIso = today.toISOString().split(".")[0];
@@ -271,17 +271,22 @@ async function getKlaviyoData(apiKey) {
     let flowValues = null;
     try {
       console.log("[Klaviyo] Fetching flow values (Reporting API)...");
-      const flowValuesRes = await axios.post(`${base}/flow-values-reports/`, {
-        data: {
-          type: "flow-values-report",
-          attributes: {
-            timeframe: { key: "last_30_days" },
-            statistics: ["open_rate", "click_rate", "recipients", "delivered", "conversion_value", "conversions"],
+      if (!placedOrderMetricId) {
+        console.log("[Klaviyo] Skipping flow values — no Placed Order metric ID");
+      } else {
+        const flowValuesRes = await axios.post(`${base}/flow-values-reports/`, {
+          data: {
+            type: "flow-values-report",
+            attributes: {
+              timeframe: { key: "last_30_days" },
+              conversion_metric_id: placedOrderMetricId,
+              statistics: ["open_rate", "click_rate", "recipients", "delivered", "conversion_value", "conversions"],
+            }
           }
-        }
-      }, { headers });
-      flowValues = flowValuesRes.data?.data?.attributes?.results || [];
-      console.log(`[Klaviyo] Flow values returned: ${flowValues.length} flow messages`);
+        }, { headers });
+        flowValues = flowValuesRes.data?.data?.attributes?.results || [];
+        console.log(`[Klaviyo] Flow values returned: ${flowValues.length} flow messages`);
+      }
     } catch (err) {
       console.log(`[Klaviyo] Flow values error: ${err.response?.data?.errors?.[0]?.detail || err.message}`);
     }

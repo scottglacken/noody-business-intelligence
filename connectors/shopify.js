@@ -61,9 +61,9 @@ async function getShopifyData(storeName, clientIdOrToken, clientSecret, business
     const summaryFields = "id,total_price,financial_status,customer,created_at";
 
     const [yesterdayRes, dayBeforeRes, mtdRes, lastWeekRes, prevWeekRes, lastMonthRes] = await Promise.all([
-      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(yesterdayNZ), created_at_max: fmt(endOfYesterdayNZ), limit: 250, fields: orderFields } }),
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(yesterdayNZ), created_at_max: fmt(endOfYesterdayNZ), limit: 250 } }),
       axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(dayBeforeNZ), created_at_max: fmt(endOfDayBeforeNZ), limit: 250, fields: summaryFields } }),
-      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(monthStartNZ), created_at_max: fmt(todayNZ), limit: 250, fields: orderFields } }),
+      axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(monthStartNZ), created_at_max: fmt(todayNZ), limit: 250 } }),
       axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(weekAgoNZ), created_at_max: fmt(todayNZ), limit: 250, fields: summaryFields } }),
       axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(twoWeeksAgoNZ), created_at_max: fmt(weekAgoNZ), limit: 250, fields: summaryFields } }),
       axios.get(`${base}/orders.json`, { headers, params: { status: "any", created_at_min: fmt(lastMonthStartNZ), created_at_max: fmt(lastMonthEndNZ), limit: 250, fields: summaryFields } }),
