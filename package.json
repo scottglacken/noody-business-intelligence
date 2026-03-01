@@ -8,6 +8,8 @@
     "schedule": "node index.js --schedule",
     "noody": "node index.js --business noody",
     "facialist": "node index.js --business facialist",
+    "monthly": "node monthly-report.js --business noody",
+    "monthly:feb": "node monthly-report.js --business noody --month 2026-02",
     "test": "node index.js --business noody"
   },
   "dependencies": {

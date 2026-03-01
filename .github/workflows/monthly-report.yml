@@ -1,0 +1,91 @@
+name: Monthly Business Review
+
+on:
+  schedule:
+    # 1st of each month at 8am NZDT (7pm UTC previous day)
+    - cron: '0 19 28-31 * *'  # Run on last few days to catch 1st after timezone conversion
+  workflow_dispatch:
+    inputs:
+      business:
+        description: 'Which business'
+        required: false
+        default: 'noody'
+      month:
+        description: 'Month to report on (YYYY-MM format, leave blank for last month)'
+        required: false
+        default: ''
+
+jobs:
+  monthly-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Only run on the 1st of the month (NZ time) for scheduled runs
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+
+      - name: Create Google credentials
+        run: |
+          mkdir -p credentials
+          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > credentials/google-sa.json
+
+      - name: Run monthly report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHOPIFY_NOODY_STORE: ${{ secrets.SHOPIFY_NOODY_STORE }}
+          SHOPIFY_NOODY_TOKEN: ${{ secrets.SHOPIFY_NOODY_TOKEN }}
+          SHOPIFY_NOODY_CLIENT_ID: ${{ secrets.SHOPIFY_NOODY_CLIENT_ID }}
+          SHOPIFY_NOODY_CLIENT_SECRET: ${{ secrets.SHOPIFY_NOODY_CLIENT_SECRET }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_NOODY_AD_ACCOUNT: ${{ secrets.META_NOODY_AD_ACCOUNT }}
+          IG_NOODY_ACCOUNT_ID: ${{ secrets.IG_NOODY_ACCOUNT_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          FB_NOODY_PAGE_ID: ${{ secrets.FB_NOODY_PAGE_ID }}
+          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_NOODY_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_NOODY_CUSTOMER_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ./credentials/google-sa.json
+          GA4_NOODY_PROPERTY_ID: ${{ secrets.GA4_NOODY_PROPERTY_ID }}
+          KLAVIYO_API_KEY: ${{ secrets.KLAVIYO_API_KEY }}
+          XERO_CLIENT_ID: ${{ secrets.XERO_CLIENT_ID }}
+          XERO_CLIENT_SECRET: ${{ secrets.XERO_CLIENT_SECRET }}
+          XERO_REFRESH_TOKEN: ${{ secrets.XERO_REFRESH_TOKEN }}
+          XERO_NOODY_TENANT_ID: ${{ secrets.XERO_NOODY_TENANT_ID }}
+          UNLEASHED_API_ID: ${{ secrets.UNLEASHED_API_ID }}
+          UNLEASHED_API_KEY: ${{ secrets.UNLEASHED_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_NOODY_CHANNEL: ${{ secrets.SLACK_NOODY_CHANNEL }}
+          SLACK_COMBINED_CHANNEL: ${{ secrets.SLACK_COMBINED_CHANNEL }}
+          SLACK_ECOMMERCE_CHANNEL: ${{ secrets.SLACK_ECOMMERCE_CHANNEL }}
+          SLACK_PPC_CHANNEL: ${{ secrets.SLACK_PPC_CHANNEL }}
+          SLACK_MARKETING_CHANNEL: ${{ secrets.SLACK_MARKETING_CHANNEL }}
+          SLACK_SOCIAL_CHANNEL: ${{ secrets.SLACK_SOCIAL_CHANNEL }}
+          SLACK_FINANCE_CHANNEL: ${{ secrets.SLACK_FINANCE_CHANNEL }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+        run: |
+          BUSINESS="${{ github.event.inputs.business || 'noody' }}"
+          MONTH="${{ github.event.inputs.month }}"
+          
+          if [ -n "$MONTH" ]; then
+            node monthly-report.js --business "$BUSINESS" --month "$MONTH"
+          else
+            node monthly-report.js --business "$BUSINESS"
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          channel-id: ${{ secrets.SLACK_COMBINED_CHANNEL }}
+          slack-message: "🚨 Monthly report failed! Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
