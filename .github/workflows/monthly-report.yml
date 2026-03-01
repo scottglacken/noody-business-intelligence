@@ -27,7 +27,6 @@ jobs:
         with:
           node-version: '20'
       - run: npm install
-      - run: npm install form-data
 
       - name: Setup Python for PDF generation
         uses: actions/setup-python@v5

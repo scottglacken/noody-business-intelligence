@@ -351,7 +351,7 @@ async function getKlaviyoMonthly(apiKey, dates) {
     // Get campaigns sent during the report month
     const campaignsRes = await axios.get(`${base}/campaigns`, {
       headers,
-      params: { "filter": `equals(messages.channel,'email'),greater-or-equal(send_time,${fmtDate(dates.monthStart)}T00:00:00Z),less-or-equal(send_time,${fmtDate(dates.monthEnd)}T23:59:59Z)` },
+      params: { "filter": `equals(messages.channel,'email'),greater-or-equal(scheduled_at,${fmtDate(dates.monthStart)}T00:00:00Z),less-or-equal(scheduled_at,${fmtDate(dates.monthEnd)}T23:59:59Z)` },
     });
 
     const campaigns = campaignsRes.data?.data || [];
@@ -640,12 +640,15 @@ async function runMonthlyReport(businessKey, targetMonth) {
     console.log(`✅ Monthly report delivered to Slack`);
   }
 
-  // Generate PDF report
+  // Generate PDF report and email via SendGrid
   try {
     const fs = require("fs");
     const { execSync } = require("child_process");
+    const sgMail = require("@sendgrid/mail");
+
     const jsonPath = `/tmp/monthly-data-${businessKey}.json`;
-    const pdfPath = `/tmp/noody-monthly-review-${dates.monthName.replace(/\s/g, "-").toLowerCase()}.pdf`;
+    const pdfFilename = `noody-monthly-review-${dates.monthName.replace(/\s/g, "-").toLowerCase()}.pdf`;
+    const pdfPath = `/tmp/${pdfFilename}`;
 
     fs.writeFileSync(jsonPath, JSON.stringify({ data, analysis }, null, 2));
     console.log(`[Monthly] Generating PDF report...`);
@@ -655,22 +658,60 @@ async function runMonthlyReport(businessKey, targetMonth) {
       stdio: "inherit",
     });
 
-    // Upload PDF to Slack
-    if (slackToken && channel && fs.existsSync(pdfPath)) {
-      const FormData = require("form-data") || null;
-      const form = new (require("form-data"))();
-      form.append("file", fs.createReadStream(pdfPath));
-      form.append("channels", channel);
-      form.append("title", `${businessName} — ${dates.monthName} Monthly Business Review`);
-      form.append("initial_comment", `📊 *${dates.monthName} Monthly Business Review* — Full PDF report attached.`);
+    // Email via SendGrid
+    if (config.email?.apiKey && config.email.recipients?.length > 0 && fs.existsSync(pdfPath)) {
+      sgMail.setApiKey(config.email.apiKey);
 
-      await axios.post("https://slack.com/api/files.upload", form, {
-        headers: { ...form.getHeaders(), Authorization: `Bearer ${slackToken}` },
-      });
-      console.log(`✅ PDF uploaded to Slack`);
+      const pdfBuffer = fs.readFileSync(pdfPath);
+      const pdfBase64 = pdfBuffer.toString("base64");
+
+      const grade = analysis.overallGrade || "N/A";
+      const summary = analysis.executiveSummary || "Monthly report attached.";
+
+      const msg = {
+        to: config.email.recipients,
+        from: config.email.fromAddress,
+        subject: `📊 ${businessName} — ${dates.monthName} Monthly Business Review (Grade: ${grade})`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: #2D4A2D; color: white; padding: 24px; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; font-size: 22px;">${businessName}</h1>
+              <p style="margin: 4px 0 0; opacity: 0.8; font-size: 14px;">${dates.monthName} Monthly Business Review</p>
+            </div>
+            <div style="background: #f5f0e8; padding: 20px; border-radius: 0 0 8px 8px;">
+              <div style="background: white; padding: 16px; border-radius: 6px; margin-bottom: 16px;">
+                <p style="margin: 0 0 4px; font-size: 12px; color: #888; text-transform: uppercase;">Overall Grade</p>
+                <p style="margin: 0; font-size: 36px; font-weight: bold; color: #2D4A2D;">${grade}</p>
+                <p style="margin: 4px 0 0; font-size: 13px; color: #666;">${analysis.gradeRationale || ""}</p>
+              </div>
+              <div style="background: white; padding: 16px; border-radius: 6px; margin-bottom: 16px;">
+                <p style="margin: 0 0 8px; font-size: 12px; color: #888; text-transform: uppercase;">Executive Summary</p>
+                <p style="margin: 0; font-size: 14px; color: #333; line-height: 1.5;">${summary}</p>
+              </div>
+              <div style="background: white; padding: 16px; border-radius: 6px;">
+                <p style="margin: 0; font-size: 14px; color: #333;">📎 <strong>Full PDF report attached</strong> — includes revenue deep-dive, Meta Ads performance, P&amp;L, channel grades, and strategic recommendations.</p>
+              </div>
+            </div>
+            <p style="margin: 16px 0 0; font-size: 11px; color: #999; text-align: center;">Noody Business Intelligence — Generated ${new Date().toLocaleString("en-NZ", { timeZone: "Pacific/Auckland" })}</p>
+          </div>
+        `,
+        attachments: [
+          {
+            content: pdfBase64,
+            filename: pdfFilename,
+            type: "application/pdf",
+            disposition: "attachment",
+          },
+        ],
+      };
+
+      await sgMail.send(msg);
+      console.log(`✅ PDF report emailed to: ${config.email.recipients.join(", ")}`);
+    } else {
+      console.warn(`⚠️  Email not sent — missing SendGrid config or no PDF file`);
     }
   } catch (pdfErr) {
-    console.warn(`⚠️  PDF generation skipped: ${pdfErr.message}`);
+    console.warn(`⚠️  PDF generation/email skipped: ${pdfErr.message}`);
   }
 
   console.log(`\n✅ [${businessName}] Monthly report complete for ${dates.monthName}\n`);
