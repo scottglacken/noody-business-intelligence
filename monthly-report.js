@@ -640,6 +640,39 @@ async function runMonthlyReport(businessKey, targetMonth) {
     console.log(`✅ Monthly report delivered to Slack`);
   }
 
+  // Generate PDF report
+  try {
+    const fs = require("fs");
+    const { execSync } = require("child_process");
+    const jsonPath = `/tmp/monthly-data-${businessKey}.json`;
+    const pdfPath = `/tmp/noody-monthly-review-${dates.monthName.replace(/\s/g, "-").toLowerCase()}.pdf`;
+
+    fs.writeFileSync(jsonPath, JSON.stringify({ data, analysis }, null, 2));
+    console.log(`[Monthly] Generating PDF report...`);
+
+    execSync(`python3 generate-monthly-pdf.py --input "${jsonPath}" --output "${pdfPath}"`, {
+      cwd: __dirname,
+      stdio: "inherit",
+    });
+
+    // Upload PDF to Slack
+    if (slackToken && channel && fs.existsSync(pdfPath)) {
+      const FormData = require("form-data") || null;
+      const form = new (require("form-data"))();
+      form.append("file", fs.createReadStream(pdfPath));
+      form.append("channels", channel);
+      form.append("title", `${businessName} — ${dates.monthName} Monthly Business Review`);
+      form.append("initial_comment", `📊 *${dates.monthName} Monthly Business Review* — Full PDF report attached.`);
+
+      await axios.post("https://slack.com/api/files.upload", form, {
+        headers: { ...form.getHeaders(), Authorization: `Bearer ${slackToken}` },
+      });
+      console.log(`✅ PDF uploaded to Slack`);
+    }
+  } catch (pdfErr) {
+    console.warn(`⚠️  PDF generation skipped: ${pdfErr.message}`);
+  }
+
   console.log(`\n✅ [${businessName}] Monthly report complete for ${dates.monthName}\n`);
   return { analysis, data };
 }
